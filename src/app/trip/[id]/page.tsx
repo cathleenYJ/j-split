@@ -12,6 +12,7 @@ import { ExpenseList } from '@/components/ExpenseList'
 import { BalanceView } from '@/components/BalanceView'
 import { InviteModal } from '@/components/InviteModal'
 import { ExchangeRateModal } from '@/components/ExchangeRateModal'
+import { CurrencySelector } from '@/components/CurrencySelector'
 import { buildRateMap, calculateBalances, calculateSettlements, Currency } from '@/lib/split-calc'
 
 type PageProps = {
@@ -35,6 +36,7 @@ export default function TripDetailPage({ params }: PageProps) {
   const [memberToRemove, setMemberToRemove] = useState<(TripMember & { profile: Profile }) | null>(null)
   const [removingMember, setRemovingMember] = useState(false)
   const [showRateModal, setShowRateModal] = useState(false)
+  const [displayCurrency, setDisplayCurrency] = useState<Currency | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -59,6 +61,11 @@ export default function TripDetailPage({ params }: PageProps) {
 
       if (tripError) throw tripError
       setTrip(tripData)
+      
+      // 初始化顯示幣別（預設為旅程基礎幣別）
+      if (!displayCurrency) {
+        setDisplayCurrency(tripData.base_currency as Currency)
+      }
 
       // 2. 檢查是否為成員
       const { data: memberCheck } = await supabase
@@ -232,11 +239,11 @@ export default function TripDetailPage({ params }: PageProps) {
       payer_id: e.payer_id,
       splitWith: e.splitWith,
     })),
-    trip.base_currency as Currency,
+    displayCurrency || trip.base_currency as Currency,
     rateMap
   )
 
-  const settlements = hasError ? [] : calculateSettlements(balances, trip.base_currency as Currency)
+  const settlements = hasError ? [] : calculateSettlements(balances, displayCurrency || trip.base_currency as Currency)
 
   return (
     <div className="min-h-screen pb-20">
@@ -326,7 +333,7 @@ export default function TripDetailPage({ params }: PageProps) {
           <ExpenseList 
             expenses={expenses} 
             members={members}
-            baseCurrency={trip.base_currency as Currency}
+            baseCurrency={displayCurrency || trip.base_currency as Currency}
             rateMap={rateMap}
             onDelete={loadTripData}
           />
@@ -334,7 +341,18 @@ export default function TripDetailPage({ params }: PageProps) {
 
         {/* Balance & Settlement */}
         <div className="card">
-          <h2 className="text-lg font-semibold mb-4">結算結果</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">結算結果</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-text3">顯示幣別</span>
+              <div className="w-32">
+                <CurrencySelector
+                  value={displayCurrency || trip.base_currency as Currency}
+                  onChange={setDisplayCurrency}
+                />
+              </div>
+            </div>
+          </div>
           {hasError ? (
             <div className="text-center py-8">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-500/20 rounded-full mb-4">
@@ -357,7 +375,7 @@ export default function TripDetailPage({ params }: PageProps) {
               balances={balances}
               settlements={settlements}
               members={members}
-              baseCurrency={trip.base_currency as Currency}
+              baseCurrency={displayCurrency || trip.base_currency as Currency}
               hasError={hasError}
             />
           )}
