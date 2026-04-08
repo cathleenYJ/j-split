@@ -28,6 +28,7 @@ export type Trip = {
   end_date: string | null
   cover_image: string | null
   base_currency: string
+  display_currency: string | null
   created_by: string
   created_at: string
   updated_at: string

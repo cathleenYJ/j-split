@@ -118,14 +118,14 @@ git push -u origin main
 
 ## 📱 使用說明
 
-### 建立旅程
+### 建立帳本
 1. 使用 Google 帳號登入
-2. 點擊「建立旅程」
-3. 填寫旅程資訊（名稱、目的地、日期等）
+2. 點擊「建立帳本」
+3. 填寫帳本資訊（名稱、目的地、日期等）
 
 ### 邀請成員
-1. 進入旅程後，點擊「設定」
-2. 分享旅程連結給旅伴
+1. 進入帳本後，點擊「設定」
+2. 分享帳本連結給成員
 3. 旅伴登入後即可一起編輯
 
 ### 記錄費用
@@ -147,14 +147,14 @@ profiles          # 使用者資料
 ├── full_name
 └── avatar_url
 
-trips             # 旅程
+trips             # 帳本
 ├── id (UUID)
 ├── title
 ├── destination
 ├── base_currency
 └── created_by
 
-trip_members      # 旅程成員
+trip_members      # 帳本成員
 ├── trip_id
 ├── user_id
 └── role
@@ -184,7 +184,7 @@ exchange_rates    # 匯率
 - ✅ Row Level Security (RLS) 保護所有資料表
 - ✅ Google OAuth 安全認證
 - ✅ JWT Token 身份驗證
-- ✅ 只有旅程成員可以查看和編輯資料
+- ✅ 只有帳本成員可以查看和編輯資料
 
 ## 🤝 貢獻
 

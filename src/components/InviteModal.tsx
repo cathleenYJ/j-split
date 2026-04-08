@@ -30,9 +30,9 @@ export function InviteModal({ tripId, tripTitle, isOpen, onClose }: Props) {
   }
 
   const handleShareEmail = () => {
-    const subject = encodeURIComponent(`邀請加入旅程：${tripTitle}`)
+    const subject = encodeURIComponent(`邀請加入帳本：${tripTitle}`)
     const body = encodeURIComponent(
-      `嗨！\n\n我邀請你加入「${tripTitle}」的旅程記帳。\n\n點擊以下連結即可加入：\n${inviteUrl}\n\n期待與你一起使用 J-Split！`
+      `嗨！\n\n我邀請你加入「${tripTitle}」的帳本記帳。\n\n點擊以下連結即可加入：\n${inviteUrl}\n\n期待與你一起使用 J-Split！`
     )
     window.open(`mailto:?subject=${subject}&body=${body}`, '_blank')
   }
@@ -41,8 +41,8 @@ export function InviteModal({ tripId, tripTitle, isOpen, onClose }: Props) {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `邀請加入旅程：${tripTitle}`,
-          text: `我邀請你加入「${tripTitle}」的旅程記帳。`,
+          title: `邀請加入帳本：${tripTitle}`,
+          text: `我邀請你加入「${tripTitle}」的帳本記帳。`,
           url: inviteUrl,
         })
       } catch (err) {
@@ -118,7 +118,7 @@ export function InviteModal({ tripId, tripTitle, isOpen, onClose }: Props) {
 
           <div className="bg-surface2 rounded-lg p-4 text-sm text-text3">
             <p className="font-medium mb-1">💡 提示</p>
-            <p>收到連結的朋友需要先登入 Google 帳號，才能加入旅程。</p>
+            <p>收到連結的朋友需要先登入 Google 帳號，才能加入帳本。</p>
           </div>
         </div>
       </div>

@@ -6,13 +6,13 @@ import { useAuth } from '@/components/AuthProvider'
 import { supabase, Trip, Expense, Profile, TripMember, ExchangeRate } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft, Users, Plus, Settings, UserPlus, Trash2, UserMinus, DollarSign } from 'lucide-react'
+import { ArrowLeft, Users, Plus, Settings, UserPlus, Trash2, UserMinus, DollarSign, Edit2 } from 'lucide-react'
 import { ExpenseForm } from '@/components/ExpenseForm'
 import { ExpenseList } from '@/components/ExpenseList'
 import { BalanceView } from '@/components/BalanceView'
 import { InviteModal } from '@/components/InviteModal'
 import { ExchangeRateModal } from '@/components/ExchangeRateModal'
-import { CurrencySelector } from '@/components/CurrencySelector'
+import { EditTripModal } from '@/components/EditTripModal'
 import { buildRateMap, calculateBalances, calculateSettlements, Currency } from '@/lib/split-calc'
 
 type PageProps = {
@@ -31,6 +31,7 @@ export default function TripDetailPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true)
   const [isMember, setIsMember] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [memberToRemove, setMemberToRemove] = useState<(TripMember & { profile: Profile }) | null>(null)
@@ -52,7 +53,7 @@ export default function TripDetailPage({ params }: PageProps) {
 
   async function loadTripData() {
     try {
-      // 1. 載入旅程資料
+      // 1. 載入帳本資料
       const { data: tripData, error: tripError } = await supabase
         .from('trips')
         .select('*')
@@ -62,9 +63,9 @@ export default function TripDetailPage({ params }: PageProps) {
       if (tripError) throw tripError
       setTrip(tripData)
       
-      // 初始化顯示幣別（預設為旅程基礎幣別）
+      // 初始化顯示幣別（從資料庫讀取，如無則使用基礎幣別）
       if (!displayCurrency) {
-        setDisplayCurrency(tripData.base_currency as Currency)
+        setDisplayCurrency((tripData.display_currency || tripData.base_currency) as Currency)
       }
 
       // 2. 檢查是否為成員
@@ -76,7 +77,7 @@ export default function TripDetailPage({ params }: PageProps) {
         .single()
 
       if (!memberCheck) {
-        alert('您不是此旅程的成員')
+        alert('您不是此帳本的成員')
         router.push('/dashboard')
         return
       }
@@ -111,7 +112,7 @@ export default function TripDetailPage({ params }: PageProps) {
       setExchangeRates(ratesData || [])
 
     } catch (error) {
-      console.error('載入旅程資料失敗:', error)
+      console.error('載入帳本資料失敗:', error)
     } finally {
       setLoading(false)
     }
@@ -150,7 +151,7 @@ export default function TripDetailPage({ params }: PageProps) {
 
   async function handleDeleteTrip() {
     if (!trip || trip.created_by !== user?.id) {
-      alert('只有旅程創建者可以刪除旅程')
+      alert('只有帳本創建者可以刪除帳本')
       return
     }
 
@@ -163,10 +164,10 @@ export default function TripDetailPage({ params }: PageProps) {
 
       if (error) throw error
 
-      alert('旅程已刪除')
+      alert('帳本已刪除')
       router.push('/dashboard')
     } catch (error) {
-      console.error('刪除旅程失敗:', error)
+      console.error('刪除帳本失敗:', error)
       alert('刪除失敗，請稍後再試')
     } finally {
       setDeleting(false)
@@ -176,7 +177,7 @@ export default function TripDetailPage({ params }: PageProps) {
 
   async function handleRemoveMember() {
     if (!memberToRemove || !trip || trip.created_by !== user?.id) {
-      alert('只有旅程創建者可以移除成員')
+      alert('只有帳本創建者可以移除成員')
       return
     }
 
@@ -187,14 +188,44 @@ export default function TripDetailPage({ params }: PageProps) {
 
     setRemovingMember(true)
     try {
-      const { error } = await supabase
+      // 1. 獲取該帳本的所有費用 ID
+      const { data: tripExpenses, error: fetchError } = await supabase
+        .from('expenses')
+        .select('id')
+        .eq('trip_id', tripId)
+
+      if (fetchError) throw fetchError
+
+      // 2. 刪除該成員在這些費用中的分攤記錄
+      if (tripExpenses && tripExpenses.length > 0) {
+        const expenseIds = tripExpenses.map(e => e.id)
+        const { error: splitError } = await supabase
+          .from('expense_splits')
+          .delete()
+          .eq('user_id', memberToRemove.user_id)
+          .in('expense_id', expenseIds)
+
+        if (splitError) throw splitError
+      }
+
+      // 3. 刪除該成員作為付款人的所有費用（CASCADE 會自動刪除剩餘的 expense_splits）
+      const { error: expenseError } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('trip_id', tripId)
+        .eq('payer_id', memberToRemove.user_id)
+
+      if (expenseError) throw expenseError
+
+      // 4. 刪除成員記錄
+      const { error: memberError } = await supabase
         .from('trip_members')
         .delete()
         .eq('id', memberToRemove.id)
 
-      if (error) throw error
+      if (memberError) throw memberError
 
-      alert('成員已移除')
+      alert('成員已移除，相關費用記錄已清除')
       setMemberToRemove(null)
       loadTripData()
     } catch (error) {
@@ -202,6 +233,22 @@ export default function TripDetailPage({ params }: PageProps) {
       alert('移除失敗，請稍後再試')
     } finally {
       setRemovingMember(false)
+    }
+  }
+
+  async function handleDisplayCurrencyChange(currency: Currency) {
+    setDisplayCurrency(currency)
+    
+    // 保存到資料庫
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({ display_currency: currency })
+        .eq('id', tripId)
+
+      if (error) throw error
+    } catch (error) {
+      console.error('保存顯示幣別失敗:', error)
     }
   }
 
@@ -224,6 +271,9 @@ export default function TripDetailPage({ params }: PageProps) {
   const rateMap = buildRateMap(
     exchangeRates.map(r => ({ from: r.from_currency as Currency, to: r.to_currency as Currency, rate: Number(r.rate) }))
   )
+
+  // 收集費用中使用的所有幣別
+  const usedCurrencies = Array.from(new Set(expenses.map(e => e.currency as Currency)))
 
   // 需要先取得 expense_splits 來知道每筆費用的分攤對象
   // 為了簡化，我們先用所有成員平分
@@ -254,9 +304,25 @@ export default function TripDetailPage({ params }: PageProps) {
             <Link href="/dashboard" className="p-2 hover:bg-surface2 rounded-lg transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h1 className="font-serif text-xl font-semibold text-accent">{trip.title}</h1>
+              {(trip.start_date || trip.end_date) && (
+                <p className="text-xs text-text3 mt-1">
+                  {trip.start_date && new Date(trip.start_date).toLocaleDateString('zh-TW')}
+                  {trip.start_date && trip.end_date && ' - '}
+                  {trip.end_date && new Date(trip.end_date).toLocaleDateString('zh-TW')}
+                </p>
+              )}
             </div>
+            {trip.created_by === user?.id && (
+              <button 
+                onClick={() => setShowEditModal(true)}
+                className="p-2 hover:bg-surface2 rounded-lg transition-colors"
+                title="編輯帳本"
+              >
+                <Edit2 className="w-5 h-5 text-accent" />
+              </button>
+            )}
             <button 
               onClick={() => setShowRateModal(true)}
               className="p-2 hover:bg-surface2 rounded-lg transition-colors"
@@ -264,18 +330,11 @@ export default function TripDetailPage({ params }: PageProps) {
             >
               <DollarSign className="w-5 h-5 text-accent" />
             </button>
-            <button 
-              onClick={() => setShowInviteModal(true)}
-              className="p-2 hover:bg-surface2 rounded-lg transition-colors"
-              title="邀請成員"
-            >
-              <UserPlus className="w-5 h-5 text-accent" />
-            </button>
             {trip.created_by === user?.id && (
               <button 
                 onClick={() => setShowDeleteModal(true)}
                 className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
-                title="刪除旅程"
+                title="刪除帳本"
               >
                 <Trash2 className="w-5 h-5 text-red-500" />
               </button>
@@ -285,6 +344,14 @@ export default function TripDetailPage({ params }: PageProps) {
           {/* Members Bar */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
             <Users className="w-4 h-4 text-text3 flex-shrink-0" />
+            <button 
+              onClick={() => setShowInviteModal(true)}
+              className="flex items-center gap-1.5 bg-accent/10 hover:bg-accent/20 px-3 py-1.5 rounded-full text-sm transition-colors flex-shrink-0"
+              title="邀請成員"
+            >
+              <UserPlus className="w-4 h-4 text-accent" />
+              <span className="text-accent font-medium">邀請</span>
+            </button>
             {members.filter(member => member.profile).map(member => (
               <div key={member.id} className="flex items-center gap-2 bg-surface2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap group">
                 {member.profile?.avatar_url && (
@@ -341,18 +408,7 @@ export default function TripDetailPage({ params }: PageProps) {
 
         {/* Balance & Settlement */}
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">結算結果</h2>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-text3">顯示幣別</span>
-              <div className="w-32">
-                <CurrencySelector
-                  value={displayCurrency || trip.base_currency as Currency}
-                  onChange={setDisplayCurrency}
-                />
-              </div>
-            </div>
-          </div>
+          <h2 className="text-lg font-semibold mb-4">結算結果</h2>
           {hasError ? (
             <div className="text-center py-8">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-500/20 rounded-full mb-4">
@@ -390,10 +446,20 @@ export default function TripDetailPage({ params }: PageProps) {
         onClose={() => setShowInviteModal(false)}
       />
 
+      {/* Edit Trip Modal */}
+      <EditTripModal
+        trip={trip}
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onSuccess={loadTripData}
+      />
+
       {/* Exchange Rate Modal */}
       <ExchangeRateModal
         tripId={tripId}
-        baseCurrency={trip.base_currency as Currency}
+        displayCurrency={displayCurrency || trip.base_currency as Currency}
+        usedCurrencies={usedCurrencies}
+        onDisplayCurrencyChange={handleDisplayCurrencyChange}
         isOpen={showRateModal}
         onClose={() => setShowRateModal(false)}
         onUpdate={loadTripData}
@@ -407,7 +473,7 @@ export default function TripDetailPage({ params }: PageProps) {
               <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
                 <Trash2 className="w-6 h-6 text-red-500" />
               </div>
-              <h3 className="text-xl font-semibold">刪除旅程</h3>
+              <h3 className="text-xl font-semibold">刪除帳本</h3>
             </div>
             
             <p className="text-text2 mb-2">
@@ -442,8 +508,8 @@ export default function TripDetailPage({ params }: PageProps) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-lg max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center">
-                <UserMinus className="w-6 h-6 text-orange-500" />
+              <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+                <UserMinus className="w-6 h-6 text-red-500" />
               </div>
               <h3 className="text-xl font-semibold">移除成員</h3>
             </div>
@@ -451,9 +517,19 @@ export default function TripDetailPage({ params }: PageProps) {
             <p className="text-text2 mb-2">
               確定要將「<span className="font-semibold text-accent">{memberToRemove.profile?.full_name || memberToRemove.profile?.email}</span>」移除嗎？
             </p>
-            <p className="text-sm text-orange-500 mb-6">
-              ⚠️ 移除後，該成員將無法查看此旅程，但其相關的費用記錄會保留。
-            </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6">
+              <p className="text-sm text-red-600 font-medium mb-2">
+                ⚠️ 此操作將會刪除：
+              </p>
+              <ul className="text-sm text-red-600 space-y-1 ml-4">
+                <li>• 該成員的所有付款記錄</li>
+                <li>• 該成員的所有費用分攤記錄</li>
+                <li>• 該成員的帳本存取權限</li>
+              </ul>
+              <p className="text-sm text-red-600 mt-2 font-medium">
+                此操作無法復原！
+              </p>
+            </div>
 
             <div className="flex gap-3">
               <button
@@ -466,7 +542,7 @@ export default function TripDetailPage({ params }: PageProps) {
               <button
                 onClick={handleRemoveMember}
                 disabled={removingMember}
-                className="flex-1 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {removingMember ? '移除中...' : '確認移除'}
               </button>

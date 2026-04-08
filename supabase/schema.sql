@@ -26,6 +26,7 @@ CREATE TABLE public.trips (
   end_date DATE,
   cover_image TEXT,
   base_currency TEXT DEFAULT 'TWD',
+  display_currency TEXT DEFAULT 'TWD',
   created_by UUID REFERENCES public.profiles(id) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

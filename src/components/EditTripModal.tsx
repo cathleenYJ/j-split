@@ -1,72 +1,67 @@
 'use client'
 
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from './AuthProvider'
+import { useState, useEffect } from 'react'
+import { supabase, Trip } from '@/lib/supabase'
 import { X } from 'lucide-react'
-import { Currency } from '@/lib/split-calc'
-import { CurrencySelector } from './CurrencySelector'
 
 type Props = {
+  trip: Trip
+  isOpen: boolean
   onClose: () => void
   onSuccess: () => void
 }
 
-export function CreateTripModal({ onClose, onSuccess }: Props) {
-  const { user } = useAuth()
+export function EditTripModal({ trip, isOpen, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
-    title: '',
-    start_date: '',
-    end_date: '',
-    base_currency: 'TWD' as Currency,
+    title: trip.title,
+    start_date: trip.start_date || '',
+    end_date: trip.end_date || '',
   })
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm({
+        title: trip.title,
+        start_date: trip.start_date || '',
+        end_date: trip.end_date || '',
+      })
+    }
+  }, [isOpen, trip])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!user) return
 
     setLoading(true)
     try {
-      // 1. 建立帳本
-      const { data: trip, error: tripError } = await supabase
+      const { error } = await supabase
         .from('trips')
-        .insert({
-          ...form,
+        .update({
+          title: form.title,
           start_date: form.start_date || null,
           end_date: form.end_date || null,
-          created_by: user.id,
         })
-        .select()
-        .single()
+        .eq('id', trip.id)
 
-      if (tripError) throw tripError
-
-      // 2. 將建立者加入成員
-      const { error: memberError } = await supabase
-        .from('trip_members')
-        .insert({
-          trip_id: trip.id,
-          user_id: user.id,
-          role: 'creator',
-        })
-
-      if (memberError) throw memberError
+      if (error) throw error
 
       onSuccess()
+      onClose()
     } catch (error: any) {
-      console.error('建立帳本失敗:', error)
-      alert('建立失敗：' + error.message)
+      console.error('更新帳本失敗:', error)
+      alert('更新失敗：' + error.message)
     } finally {
       setLoading(false)
     }
   }
 
+  if (!isOpen) return null
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="card max-w-lg w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-serif font-semibold text-accent">建立新帳本</h2>
+          <h2 className="text-2xl font-serif font-semibold text-accent">編輯帳本資訊</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-surface2 rounded-lg transition-colors"
@@ -109,14 +104,6 @@ export function CreateTripModal({ onClose, onSuccess }: Props) {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-2">結算幣別</label>
-            <CurrencySelector
-              value={form.base_currency}
-              onChange={(currency) => setForm({ ...form, base_currency: currency })}
-            />
-          </div>
-
           <div className="flex gap-3 pt-4">
             <button
               type="button"
@@ -131,7 +118,7 @@ export function CreateTripModal({ onClose, onSuccess }: Props) {
               className="flex-1 px-6 py-3 rounded-lg btn-primary"
               disabled={loading}
             >
-              {loading ? '建立中...' : '建立帳本'}
+              {loading ? '儲存中...' : '儲存變更'}
             </button>
           </div>
         </form>

@@ -37,7 +37,7 @@ export default function JoinTripPage({ params }: PageProps) {
   async function loadTripInfo() {
     try {
       setLoading(true)
-      // 載入旅程資料
+      // 載入帳本資料
       const { data: tripData, error: tripError } = await supabase
         .from('trips')
         .select('*')
@@ -46,7 +46,7 @@ export default function JoinTripPage({ params }: PageProps) {
 
       if (tripError) {
         console.error('Trip not found:', tripError)
-        alert('找不到此旅程')
+        alert('找不到此帳本')
         router.push('/dashboard')
         return
       }
@@ -77,7 +77,7 @@ export default function JoinTripPage({ params }: PageProps) {
 
     setJoining(true)
     try {
-      // 加入旅程
+      // 加入帳本
       const { error } = await supabase
         .from('trip_members')
         .insert({
@@ -91,18 +91,18 @@ export default function JoinTripPage({ params }: PageProps) {
         throw error
       }
 
-      console.log('成功加入旅程:', tripId)
+      console.log('成功加入帳本:', tripId)
       
       // 清除 pending invite
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('pendingInvite')
       }
       
-      // 成功後導向旅程頁面
+      // 成功後導向帳本頁面
       router.push(`/trip/${tripId}`)
     } catch (error: any) {
       console.error('Failed to join trip:', error)
-      alert(`加入旅程失敗：${error.message || '請稍後再試'}`)
+      alert(`加入帳本失敗：${error.message || '請稍後再試'}`)
     } finally {
       setJoining(false)
     }
@@ -132,7 +132,7 @@ export default function JoinTripPage({ params }: PageProps) {
               <Check className="w-8 h-8 text-green-500" />
             </div>
             <h1 className="text-2xl font-semibold mb-2">你已經是成員了！</h1>
-            <p className="text-text3 mb-6">你已經在「{trip.title}」的旅程中</p>
+            <p className="text-text3 mb-6">你已經在「{trip.title}」的帳本中</p>
             
             <div className="space-y-3">
               <button
@@ -140,14 +140,14 @@ export default function JoinTripPage({ params }: PageProps) {
                 className="w-full btn-primary px-6 py-3 rounded-lg flex items-center justify-center gap-2"
               >
                 <ArrowRight className="w-5 h-5" />
-                前往旅程
+                前往帳本
               </button>
 
               <button
                 onClick={() => router.push('/dashboard')}
                 className="w-full py-3 text-text3 hover:text-text1 transition-colors text-sm"
               >
-                返回我的旅程
+                返回我的帳本
               </button>
             </div>
           </div>
@@ -164,7 +164,7 @@ export default function JoinTripPage({ params }: PageProps) {
             <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4">
               <Users className="w-8 h-8 text-accent" />
             </div>
-            <h2 className="text-xl font-semibold mb-2">邀請你加入旅程</h2>
+            <h2 className="text-xl font-semibold mb-2">邀請你加入帳本</h2>
             <p className="text-2xl font-serif text-accent">{trip.title}</p>
             {trip.start_date && trip.end_date && (
               <p className="text-sm text-text3 mt-2">
@@ -179,7 +179,7 @@ export default function JoinTripPage({ params }: PageProps) {
             </p>
             <ul className="mt-2 space-y-1 text-sm">
               <li>✓ 查看所有費用明細</li>
-              <li>✓ 新增旅程費用</li>
+              <li>✓ 新增帳本費用</li>
               <li>✓ 即時查看結算結果</li>
               <li>✓ 與成員即時協作</li>
             </ul>
@@ -192,14 +192,14 @@ export default function JoinTripPage({ params }: PageProps) {
               className="w-full btn-primary px-6 py-3 rounded-lg flex items-center justify-center gap-2"
             >
               <Users className="w-5 h-5" />
-              {joining ? '加入中...' : '加入旅程'}
+              {joining ? '加入中...' : '加入帳本'}
             </button>
 
             <button
               onClick={() => router.push('/dashboard')}
               className="w-full py-3 text-text3 hover:text-text1 transition-colors text-sm"
             >
-              返回我的旅程
+              返回我的帳本
             </button>
           </div>
         </div>

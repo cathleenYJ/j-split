@@ -40,7 +40,7 @@ export default function DashboardPage() {
 
   async function loadTrips() {
     try {
-      // 查詢用戶參與的旅程 ID
+      // 查詢用戶參與的帳本 ID
       const { data: memberData, error: memberError } = await supabase
         .from('trip_members')
         .select('trip_id')
@@ -50,7 +50,7 @@ export default function DashboardPage() {
 
       const tripIds = memberData.map((m) => m.trip_id)
 
-      // 查詢旅程：包含用戶創建的 + 被邀請加入的
+      // 查詢帳本：包含用戶創建的 + 被邀請加入的
       let query = supabase
         .from('trips')
         .select('*')
@@ -66,7 +66,7 @@ export default function DashboardPage() {
       if (tripsError) throw tripsError
       setTrips(tripsData || [])
     } catch (error) {
-      console.error('載入旅程失敗:', error)
+      console.error('載入帳本失敗:', error)
     } finally {
       setLoadingTrips(false)
     }
@@ -128,7 +128,7 @@ export default function DashboardPage() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-serif font-semibold text-accent mb-2">我的旅程</h1>
+            <h1 className="text-3xl font-serif font-semibold text-accent mb-2">我的帳本</h1>
             <p className="text-text3">管理您的分帳記錄</p>
           </div>
           <button
@@ -136,7 +136,7 @@ export default function DashboardPage() {
             className="btn-primary px-6 py-3 rounded-lg flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
-            <span>建立旅程</span>
+            <span>建立帳本</span>
           </button>
         </div>
 
@@ -144,19 +144,19 @@ export default function DashboardPage() {
         {loadingTrips ? (
           <div className="text-center py-12">
             <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-text3">載入旅程中...</p>
+            <p className="text-text3">載入帳本中...</p>
           </div>
         ) : trips.length === 0 ? (
           <div className="card text-center py-16">
             <div className="text-6xl mb-4">✈️</div>
-            <h3 className="text-xl font-semibold mb-2">還沒有任何旅程</h3>
-            <p className="text-text3 mb-6">建立您的第一個旅程，開始記錄美好回憶</p>
+            <h3 className="text-xl font-semibold mb-2">還沒有任何帳本</h3>
+            <p className="text-text3 mb-6">建立您的第一個帳本，開始記錄美好回憶</p>
             <button
               onClick={() => setShowCreateModal(true)}
               className="btn-primary px-6 py-3 rounded-lg inline-flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
-              建立第一個旅程
+              建立第一個帳本
             </button>
           </div>
         ) : (
