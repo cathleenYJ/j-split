@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { TripMember } from '@/lib/supabase'
+import { TripMember, getMemberDisplayName } from '@/lib/supabase'
 import { Search, X, User } from 'lucide-react'
 import Image from 'next/image'
 
 type Props = {
   members: (TripMember & { profile: any })[]
-  value: string
-  onChange: (userId: string) => void
+  value: string                        // trip_members.id
+  onChange: (memberId: string) => void
   placeholder?: string
   className?: string
 }
@@ -19,7 +19,6 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // 點擊外部關閉
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -31,32 +30,27 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // 開啟時自動聚焦搜尋框
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus()
     }
   }, [isOpen])
 
-  // 獲取選中的成員
-  const selectedMember = members.find(m => m.user_id === value)
-  
-  // 過濾成員
+  const selectedMember = members.find(m => m.id === value)
+
   const filteredMembers = members.filter(m => {
-    if (!m.profile) return false
-    const name = m.profile.full_name || m.profile.email || ''
+    const name = getMemberDisplayName(m)
     return name.toLowerCase().includes(search.toLowerCase())
   })
 
-  function handleSelect(userId: string) {
-    onChange(userId)
+  function handleSelect(memberId: string) {
+    onChange(memberId)
     setIsOpen(false)
     setSearch('')
   }
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      {/* 選擇按鈕 */}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -64,7 +58,11 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
       >
         {selectedMember ? (
           <div className="flex items-center gap-2 min-w-0">
-            {selectedMember.profile?.avatar_url ? (
+            {selectedMember.guest_name ? (
+              <div className="w-6 h-6 rounded-full bg-accent2/20 flex items-center justify-center flex-shrink-0">
+                <User className="w-4 h-4 text-accent2" />
+              </div>
+            ) : selectedMember.profile?.avatar_url ? (
               <Image
                 src={selectedMember.profile.avatar_url}
                 alt={selectedMember.profile.full_name || ''}
@@ -77,9 +75,10 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
                 <User className="w-4 h-4 text-accent" />
               </div>
             )}
-            <span className="font-medium truncate">
-              {selectedMember.profile?.full_name || selectedMember.profile?.email || '未知用戶'}
-            </span>
+            <span className="font-medium truncate">{getMemberDisplayName(selectedMember)}</span>
+            {selectedMember.guest_name && (
+              <span className="text-xs bg-accent2/10 text-accent2 px-1.5 py-0.5 rounded flex-shrink-0">訪客</span>
+            )}
           </div>
         ) : (
           <span className="text-text3">{placeholder}</span>
@@ -89,10 +88,8 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
         </svg>
       </button>
 
-      {/* 下拉選單 */}
       {isOpen && (
         <div className="absolute z-50 mt-2 w-full bg-surface border border-[var(--border2)] rounded-lg shadow-lg max-h-[300px] overflow-hidden flex flex-col">
-          {/* 搜尋框 */}
           <div className="p-3 border-b border-[var(--border)] sticky top-0 bg-surface">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text3" />
@@ -116,19 +113,22 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
             </div>
           </div>
 
-          {/* 成員列表 */}
           <div className="overflow-y-auto">
             {filteredMembers.length > 0 ? (
               filteredMembers.map(member => (
                 <button
                   key={member.id}
                   type="button"
-                  onClick={() => handleSelect(member.user_id)}
+                  onClick={() => handleSelect(member.id)}
                   className={`w-full px-4 py-2.5 text-left text-sm hover:bg-surface2 transition-colors flex items-center gap-3 ${
-                    member.user_id === value ? 'bg-accent/10 text-accent font-medium' : ''
+                    member.id === value ? 'bg-accent/10 text-accent font-medium' : ''
                   }`}
                 >
-                  {member.profile?.avatar_url ? (
+                  {member.guest_name ? (
+                    <div className="w-7 h-7 rounded-full bg-accent2/20 flex items-center justify-center flex-shrink-0">
+                      <User className="w-4 h-4 text-accent2" />
+                    </div>
+                  ) : member.profile?.avatar_url ? (
                     <Image
                       src={member.profile.avatar_url}
                       alt={member.profile.full_name || ''}
@@ -141,9 +141,10 @@ export function MemberSelector({ members, value, onChange, placeholder = '選擇
                       <User className="w-4 h-4 text-accent" />
                     </div>
                   )}
-                  <span className="truncate">
-                    {member.profile?.full_name || member.profile?.email || '未知用戶'}
-                  </span>
+                  <span className="truncate flex-1">{getMemberDisplayName(member)}</span>
+                  {member.guest_name && (
+                    <span className="text-xs bg-accent2/10 text-accent2 px-1.5 py-0.5 rounded flex-shrink-0">訪客</span>
+                  )}
                 </button>
               ))
             ) : (

@@ -37,7 +37,8 @@ export type Trip = {
 export type TripMember = {
   id: string
   trip_id: string
-  user_id: string
+  user_id: string | null      // 訪客成員為 null
+  guest_name: string | null   // 訪客顯示名稱，登入成員為 null
   role: 'creator' | 'admin' | 'member'
   joined_at: string
 }
@@ -48,7 +49,8 @@ export type Expense = {
   description: string
   amount: number
   currency: string
-  payer_id: string
+  payer_id: string | null           // 訪客付款時為 null
+  payer_member_id: string | null    // 指向 trip_members.id（統一識別）
   expense_date: string
   category: string | null
   notes: string | null
@@ -60,9 +62,16 @@ export type Expense = {
 export type ExpenseSplit = {
   id: string
   expense_id: string
-  user_id: string
+  user_id: string | null     // 訪客分攤時為 null
+  member_id: string | null   // 指向 trip_members.id（統一識別）
   share_amount: number | null
   created_at: string
+}
+
+// 取得成員顯示名稱（相容登入成員與訪客）
+export function getMemberDisplayName(member: TripMember & { profile?: any }): string {
+  if (member.guest_name) return member.guest_name
+  return member.profile?.full_name || member.profile?.email || '未知用戶'
 }
 
 export type ExchangeRate = {

@@ -1,8 +1,8 @@
 'use client'
 
-import { Expense, TripMember, supabase } from '@/lib/supabase'
+import { Expense, TripMember, supabase, getMemberDisplayName } from '@/lib/supabase'
 import { Currency, formatCurrency, convert } from '@/lib/split-calc'
-import { Trash2 } from 'lucide-react'
+import { Trash2, User } from 'lucide-react'
 import Image from 'next/image'
 import { useAuth } from './AuthProvider'
 
@@ -17,8 +17,9 @@ type Props = {
 export function ExpenseList({ expenses, members, baseCurrency, rateMap, onDelete }: Props) {
   const { user } = useAuth()
 
+  // 改用 trip_members.id 查找（相容登入與訪客成員）
   function getMemberById(id: string) {
-    return members.find(m => m.user_id === id)
+    return members.find(m => m.id === id)
   }
 
   async function handleDelete(expenseId: string) {
@@ -52,27 +53,37 @@ export function ExpenseList({ expenses, members, baseCurrency, rateMap, onDelete
     <div>
       <div className="space-y-3">
         {expenses.map(exp => {
-          const payer = getMemberById(exp.payer_id)
+          // payer_member_id 優先（新資料），fallback 至舊欄位查詢
+          const payerId = exp.payer_member_id || ''
+          const payer = payerId ? getMemberById(payerId) : null
           const converted = convert(Number(exp.amount), exp.currency as Currency, baseCurrency, rateMap)
 
           return (
             <div key={exp.id} className="flex items-center gap-3 py-3 border-b border-[var(--border)] last:border-0">
               {/* Payer Avatar */}
-              {payer?.profile?.avatar_url && (
+              {payer?.guest_name ? (
+                <div className="w-9 h-9 rounded-full bg-accent2/20 flex items-center justify-center flex-shrink-0">
+                  <User className="w-5 h-5 text-accent2" />
+                </div>
+              ) : payer?.profile?.avatar_url ? (
                 <Image
                   src={payer.profile.avatar_url}
-                  alt={payer.profile.full_name || ''}
+                  alt={getMemberDisplayName(payer)}
                   width={36}
                   height={36}
                   className="rounded-full flex-shrink-0"
                 />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                  <User className="w-5 h-5 text-accent" />
+                </div>
               )}
 
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm md:text-base">{exp.description}</div>
                 <div className="text-xs md:text-sm text-text3">
-                  {payer?.profile?.full_name || payer?.profile?.email || '未知用戶'} 付款
+                  {payer ? getMemberDisplayName(payer) : '未知用戶'} 付款
                   {exp.expense_date && ` · ${new Date(exp.expense_date).toLocaleDateString('zh-TW')}`}
                 </div>
               </div>

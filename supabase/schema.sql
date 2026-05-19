@@ -32,15 +32,20 @@ CREATE TABLE public.trips (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. 旅程成員資料表
+-- 3. 旅程成員資料表（支援訪客成員：user_id 或 guest_name 擇一設定）
 CREATE TABLE public.trip_members (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   trip_id UUID REFERENCES public.trips(id) ON DELETE CASCADE NOT NULL,
-  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  user_id UUID REFERENCES public.profiles(id),          -- 登入成員；訪客為 NULL
+  guest_name TEXT,                                       -- 訪客顯示名稱；登入成員為 NULL
   role TEXT DEFAULT 'member' CHECK (role IN ('creator', 'admin', 'member')),
   joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(trip_id, user_id)
+  CONSTRAINT check_member_identity CHECK (user_id IS NOT NULL OR guest_name IS NOT NULL)
 );
+-- 登入成員唯一索引（不含 NULL）
+CREATE UNIQUE INDEX trip_members_unique_user ON public.trip_members (trip_id, user_id) WHERE user_id IS NOT NULL;
+-- 訪客唯一索引（同帳本不允許重名）
+CREATE UNIQUE INDEX trip_members_unique_guest ON public.trip_members (trip_id, guest_name) WHERE guest_name IS NOT NULL;
 
 -- 4. 匯率資料表
 CREATE TABLE public.exchange_rates (
@@ -61,7 +66,8 @@ CREATE TABLE public.expenses (
   description TEXT NOT NULL,
   amount DECIMAL(20, 2) NOT NULL,
   currency TEXT NOT NULL,
-  payer_id UUID REFERENCES public.profiles(id) NOT NULL,
+  payer_id UUID REFERENCES public.profiles(id),                              -- 登入成員付款；訪客為 NULL
+  payer_member_id UUID REFERENCES public.trip_members(id) ON DELETE SET NULL, -- 統一付款人識別（trip_members.id）
   expense_date DATE DEFAULT CURRENT_DATE,
   category TEXT,
   notes TEXT,
@@ -74,11 +80,12 @@ CREATE TABLE public.expenses (
 CREATE TABLE public.expense_splits (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   expense_id UUID REFERENCES public.expenses(id) ON DELETE CASCADE NOT NULL,
-  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  user_id UUID REFERENCES public.profiles(id),                         -- 登入成員；訪客為 NULL
+  member_id UUID REFERENCES public.trip_members(id) ON DELETE CASCADE, -- 統一成員識別（trip_members.id）
   share_amount DECIMAL(20, 2),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(expense_id, user_id)
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+CREATE UNIQUE INDEX expense_splits_unique_member ON public.expense_splits (expense_id, member_id) WHERE member_id IS NOT NULL;
 
 -- 7. 即時協作表（追蹤誰正在編輯）
 CREATE TABLE public.active_users (
@@ -178,9 +185,17 @@ CREATE POLICY "Members can view all trip members"
   ON public.trip_members FOR SELECT 
   USING (public.is_trip_member(trip_id));
 
-CREATE POLICY "Users can add themselves as members" 
-  ON public.trip_members FOR INSERT 
+CREATE POLICY "Users can add themselves as members"
+  ON public.trip_members FOR INSERT
   WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Members can add guests"
+  ON public.trip_members FOR INSERT
+  WITH CHECK (
+    guest_name IS NOT NULL AND
+    user_id IS NULL AND
+    public.is_trip_member(trip_id)
+  );
 
 CREATE POLICY "Trip creators can manage members" 
   ON public.trip_members FOR ALL

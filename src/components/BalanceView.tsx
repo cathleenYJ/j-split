@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { TripMember } from '@/lib/supabase'
+import { TripMember, getMemberDisplayName } from '@/lib/supabase'
 import { Currency, formatCurrency, Balance, Settlement } from '@/lib/split-calc'
 import Image from 'next/image'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, User } from 'lucide-react'
 
 type Props = {
   balances: Balance
@@ -17,8 +17,9 @@ type Props = {
 export function BalanceView({ balances, settlements, members, baseCurrency, hasError }: Props) {
   const [tab, setTab] = useState<'balance' | 'settlement'>('balance')
 
+  // 改用 trip_members.id 查找（相容登入與訪客成員）
   function getMemberById(id: string) {
-    return members.find(m => m.user_id === id)
+    return members.find(m => m.id === id)
   }
 
   if (hasError) {
@@ -35,6 +36,32 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
 
   const threshold = baseCurrency === 'KRW' ? 50 : baseCurrency === 'JPY' ? 5 : 0.5
 
+  function MemberAvatar({ member }: { member: TripMember & { profile: any } }) {
+    if (member.guest_name) {
+      return (
+        <div className="w-8 h-8 rounded-full bg-accent2/20 flex items-center justify-center flex-shrink-0">
+          <User className="w-4 h-4 text-accent2" />
+        </div>
+      )
+    }
+    if (member.profile?.avatar_url) {
+      return (
+        <Image
+          src={member.profile.avatar_url}
+          alt={getMemberDisplayName(member)}
+          width={32}
+          height={32}
+          className="rounded-full flex-shrink-0"
+        />
+      )
+    }
+    return (
+      <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+        <User className="w-4 h-4 text-accent" />
+      </div>
+    )
+  }
+
   return (
     <div>
       {/* Tabs */}
@@ -42,9 +69,7 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
         <button
           onClick={() => setTab('balance')}
           className={`px-4 py-3 text-sm font-medium transition-colors relative ${
-            tab === 'balance'
-              ? 'text-accent'
-              : 'text-text3 hover:text-text2'
+            tab === 'balance' ? 'text-accent' : 'text-text3 hover:text-text2'
           }`}
         >
           個人餘額
@@ -55,9 +80,7 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
         <button
           onClick={() => setTab('settlement')}
           className={`px-4 py-3 text-sm font-medium transition-colors relative ${
-            tab === 'settlement'
-              ? 'text-accent'
-              : 'text-text3 hover:text-text2'
+            tab === 'settlement' ? 'text-accent' : 'text-text3 hover:text-text2'
           }`}
         >
           轉帳方案
@@ -70,26 +93,23 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
       {/* Balance View */}
       {tab === 'balance' && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {members.filter(member => member.profile).map(member => {
-            const balance = balances[member.user_id] || 0
+          {members.map(member => {
+            const balance = balances[member.id] || 0
             const isPositive = balance >= threshold
             const isNegative = balance <= -threshold
 
             return (
               <div key={member.id} className="bg-surface2 border border-[var(--border)] rounded-lg p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  {member.profile?.avatar_url && (
-                    <Image
-                      src={member.profile.avatar_url}
-                      alt={member.profile.full_name || ''}
-                      width={32}
-                      height={32}
-                      className="rounded-full"
-                    />
-                  )}
-                  <span className="font-medium text-sm">
-                    {member.profile?.full_name || member.profile?.email || '未知用戶'}
-                  </span>
+                  <MemberAvatar member={member} />
+                  <div className="min-w-0">
+                    <span className="font-medium text-sm block truncate">
+                      {getMemberDisplayName(member)}
+                    </span>
+                    {member.guest_name && (
+                      <span className="text-xs text-accent2">訪客</span>
+                    )}
+                  </div>
                 </div>
                 <div className={`text-xl font-semibold ${
                   isPositive ? 'text-green' : isNegative ? 'text-red' : 'text-text'
@@ -121,41 +141,25 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
                 return (
                   <div key={idx} className="flex items-center gap-3 py-3 px-4 bg-surface2 rounded-lg">
                     {/* From */}
-                    <div className="flex items-center gap-2 flex-1">
-                      {from?.profile.avatar_url && (
-                        <Image
-                          src={from.profile.avatar_url}
-                          alt={from.profile.full_name || ''}
-                          width={32}
-                          height={32}
-                          className="rounded-full"
-                        />
-                      )}
-                      <span className="font-medium text-sm">
-                        {from?.profile.full_name || from?.profile.email}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {from && <MemberAvatar member={from} />}
+                      <span className="font-medium text-sm truncate">
+                        {from ? getMemberDisplayName(from) : '未知'}
                       </span>
                     </div>
 
                     {/* Arrow */}
-                    <div className="flex items-center gap-2 text-text3">
-                      <div className="h-px flex-1 bg-[var(--border2)] min-w-[20px]"></div>
-                      <ArrowRight className="w-4 h-4 flex-shrink-0" />
-                      <div className="h-px flex-1 bg-[var(--border2)] min-w-[20px]"></div>
+                    <div className="flex items-center gap-2 text-text3 flex-shrink-0">
+                      <div className="h-px w-5 bg-[var(--border2)]"></div>
+                      <ArrowRight className="w-4 h-4" />
+                      <div className="h-px w-5 bg-[var(--border2)]"></div>
                     </div>
 
                     {/* To */}
-                    <div className="flex items-center gap-2 flex-1">
-                      {to?.profile.avatar_url && (
-                        <Image
-                          src={to.profile.avatar_url}
-                          alt={to.profile.full_name || ''}
-                          width={32}
-                          height={32}
-                          className="rounded-full"
-                        />
-                      )}
-                      <span className="font-medium text-sm">
-                        {to?.profile.full_name || to?.profile.email}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {to && <MemberAvatar member={to} />}
+                      <span className="font-medium text-sm truncate">
+                        {to ? getMemberDisplayName(to) : '未知'}
                       </span>
                     </div>
 

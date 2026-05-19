@@ -13,7 +13,9 @@ import { BalanceView } from '@/components/BalanceView'
 import { InviteModal } from '@/components/InviteModal'
 import { ExchangeRateModal } from '@/components/ExchangeRateModal'
 import { EditTripModal } from '@/components/EditTripModal'
+import { AddGuestModal } from '@/components/AddGuestModal'
 import { buildRateMap, calculateBalances, calculateSettlements, Currency } from '@/lib/split-calc'
+import { getMemberDisplayName } from '@/lib/supabase'
 
 type PageProps = {
   params: { id: string }
@@ -33,8 +35,9 @@ export default function TripDetailPage({ params }: PageProps) {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showAddGuestModal, setShowAddGuestModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [memberToRemove, setMemberToRemove] = useState<(TripMember & { profile: Profile }) | null>(null)
+  const [memberToRemove, setMemberToRemove] = useState<(TripMember & { profile: Profile | null }) | null>(null)
   const [removingMember, setRemovingMember] = useState(false)
   const [showRateModal, setShowRateModal] = useState(false)
   const [displayCurrency, setDisplayCurrency] = useState<Currency | null>(null)
@@ -196,13 +199,13 @@ export default function TripDetailPage({ params }: PageProps) {
 
       if (fetchError) throw fetchError
 
-      // 2. 刪除該成員在這些費用中的分攤記錄
+      // 2. 刪除該成員在這些費用中的分攤記錄（用 member_id 統一處理登入與訪客）
       if (tripExpenses && tripExpenses.length > 0) {
         const expenseIds = tripExpenses.map(e => e.id)
         const { error: splitError } = await supabase
           .from('expense_splits')
           .delete()
-          .eq('user_id', memberToRemove.user_id)
+          .eq('member_id', memberToRemove.id)
           .in('expense_id', expenseIds)
 
         if (splitError) throw splitError
@@ -213,7 +216,7 @@ export default function TripDetailPage({ params }: PageProps) {
         .from('expenses')
         .delete()
         .eq('trip_id', tripId)
-        .eq('payer_id', memberToRemove.user_id)
+        .eq('payer_member_id', memberToRemove.id)
 
       if (expenseError) throw expenseError
 
@@ -275,18 +278,17 @@ export default function TripDetailPage({ params }: PageProps) {
   // 收集費用中使用的所有幣別
   const usedCurrencies = Array.from(new Set(expenses.map(e => e.currency as Currency)))
 
-  // 需要先取得 expense_splits 來知道每筆費用的分攤對象
-  // 為了簡化，我們先用所有成員平分
+  // 使用 trip_members.id 作為統一成員識別鍵（相容登入與訪客成員）
   const expensesWithSplits = expenses.map(exp => ({
     ...exp,
-    splitWith: members.map(m => m.user_id), // 簡化版：所有人平分
+    splitWith: members.map(m => m.id),
   }))
 
   const { balances, hasError } = calculateBalances(
     expensesWithSplits.map(e => ({
       amount: Number(e.amount),
       currency: e.currency as Currency,
-      payer_id: e.payer_id,
+      payer_id: e.payer_member_id || '',
       splitWith: e.splitWith,
     })),
     displayCurrency || trip.base_currency as Currency,
@@ -344,7 +346,7 @@ export default function TripDetailPage({ params }: PageProps) {
           {/* Members Bar */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
             <Users className="w-4 h-4 text-text3 flex-shrink-0" />
-            <button 
+            <button
               onClick={() => setShowInviteModal(true)}
               className="flex items-center gap-1.5 bg-accent/10 hover:bg-accent/20 px-3 py-1.5 rounded-full text-sm transition-colors flex-shrink-0"
               title="邀請成員"
@@ -352,18 +354,30 @@ export default function TripDetailPage({ params }: PageProps) {
               <UserPlus className="w-4 h-4 text-accent" />
               <span className="text-accent font-medium">邀請</span>
             </button>
-            {members.filter(member => member.profile).map(member => (
+            <button
+              onClick={() => setShowAddGuestModal(true)}
+              className="flex items-center gap-1.5 bg-accent2/10 hover:bg-accent2/20 px-3 py-1.5 rounded-full text-sm transition-colors flex-shrink-0"
+              title="新增訪客成員"
+            >
+              <UserPlus className="w-4 h-4 text-accent2" />
+              <span className="text-accent2 font-medium">訪客</span>
+            </button>
+            {members.map(member => (
               <div key={member.id} className="flex items-center gap-2 bg-surface2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap group">
-                {member.profile?.avatar_url && (
+                {member.guest_name ? (
+                  <div className="w-5 h-5 rounded-full bg-accent2/20 flex items-center justify-center">
+                    <span className="text-[10px] text-accent2 font-bold">訪</span>
+                  </div>
+                ) : member.profile?.avatar_url ? (
                   <Image
                     src={member.profile.avatar_url}
-                    alt={member.profile.full_name || ''}
+                    alt={getMemberDisplayName(member)}
                     width={20}
                     height={20}
                     className="rounded-full"
                   />
-                )}
-                <span>{member.profile?.full_name || member.profile?.email || '未知用戶'}</span>
+                ) : null}
+                <span>{getMemberDisplayName(member)}</span>
                 {trip.created_by === user?.id && member.user_id !== user?.id && (
                   <button
                     onClick={() => setMemberToRemove(member)}
@@ -437,6 +451,14 @@ export default function TripDetailPage({ params }: PageProps) {
           )}
         </div>
       </main>
+
+      {/* Add Guest Modal */}
+      <AddGuestModal
+        tripId={tripId}
+        isOpen={showAddGuestModal}
+        onClose={() => setShowAddGuestModal(false)}
+        onSuccess={loadTripData}
+      />
 
       {/* Invite Modal */}
       <InviteModal
@@ -515,7 +537,7 @@ export default function TripDetailPage({ params }: PageProps) {
             </div>
             
             <p className="text-text2 mb-2">
-              確定要將「<span className="font-semibold text-accent">{memberToRemove.profile?.full_name || memberToRemove.profile?.email}</span>」移除嗎？
+              確定要將「<span className="font-semibold text-accent">{getMemberDisplayName(memberToRemove)}</span>」移除嗎？
             </p>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-6">
               <p className="text-sm text-red-600 font-medium mb-2">

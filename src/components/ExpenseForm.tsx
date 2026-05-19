@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { supabase, TripMember } from '@/lib/supabase'
+import { useState, useEffect } from 'react'
+import { supabase, TripMember, getMemberDisplayName } from '@/lib/supabase'
 import { useAuth } from './AuthProvider'
 import { Currency } from '@/lib/split-calc'
 import { Plus } from 'lucide-react'
@@ -21,10 +21,20 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
     description: '',
     amount: '',
     currency: 'TWD' as Currency,
-    payer_id: user?.id || '',
+    payerMemberId: '',   // 改用 trip_members.id
     expense_date: new Date().toISOString().split('T')[0],
-    splitWith: [] as string[],
+    splitWith: [] as string[],  // trip_members.id 陣列
   })
+
+  // 成員載入後預設付款人為當前使用者
+  useEffect(() => {
+    if (members.length > 0 && !form.payerMemberId && user) {
+      const myMember = members.find(m => m.user_id === user.id)
+      if (myMember) {
+        setForm(prev => ({ ...prev, payerMemberId: myMember.id }))
+      }
+    }
+  }, [members, user?.id])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -38,15 +48,16 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
         return
       }
 
-      if (!form.payer_id) {
+      if (!form.payerMemberId) {
         alert('請選擇付款人')
         return
       }
 
+      const payerMember = members.find(m => m.id === form.payerMemberId)
       // 如果沒選分攤對象，預設所有人
-      const splitWith = form.splitWith.length > 0 ? form.splitWith : members.map(m => m.user_id)
+      const splitWith = form.splitWith.length > 0 ? form.splitWith : members.map(m => m.id)
 
-      // 建立費用
+      // 建立費用（payer_id 僅對登入成員有值，訪客為 null）
       const { data: expense, error: expenseError } = await supabase
         .from('expenses')
         .insert({
@@ -54,7 +65,8 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
           description: form.description,
           amount,
           currency: form.currency,
-          payer_id: form.payer_id,
+          payer_id: payerMember?.user_id || null,
+          payer_member_id: form.payerMemberId,
           expense_date: form.expense_date,
           created_by: user.id,
         })
@@ -65,11 +77,15 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
 
       // 建立分攤記錄
       const shareAmount = amount / splitWith.length
-      const splits = splitWith.map(userId => ({
-        expense_id: expense.id,
-        user_id: userId,
-        share_amount: shareAmount,
-      }))
+      const splits = splitWith.map(memberId => {
+        const m = members.find(mm => mm.id === memberId)
+        return {
+          expense_id: expense.id,
+          user_id: m?.user_id || null,
+          member_id: memberId,
+          share_amount: shareAmount,
+        }
+      })
 
       const { error: splitError } = await supabase
         .from('expense_splits')
@@ -77,15 +93,15 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
 
       if (splitError) throw splitError
 
-      // 重置表單
-      setForm({
+      // 重置表單（保留付款人）
+      setForm(prev => ({
         description: '',
         amount: '',
         currency: 'TWD',
-        payer_id: user.id,
+        payerMemberId: prev.payerMemberId,
         expense_date: new Date().toISOString().split('T')[0],
         splitWith: [],
-      })
+      }))
 
       onSuccess()
     } catch (error: any) {
@@ -96,12 +112,12 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
     }
   }
 
-  function toggleSplit(userId: string) {
+  function toggleSplit(memberId: string) {
     setForm(prev => ({
       ...prev,
-      splitWith: prev.splitWith.includes(userId)
-        ? prev.splitWith.filter(id => id !== userId)
-        : [...prev.splitWith, userId]
+      splitWith: prev.splitWith.includes(memberId)
+        ? prev.splitWith.filter(id => id !== memberId)
+        : [...prev.splitWith, memberId]
     }))
   }
 
@@ -135,8 +151,8 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
         />
         <MemberSelector
           members={members}
-          value={form.payer_id}
-          onChange={(userId) => setForm({ ...form, payer_id: userId })}
+          value={form.payerMemberId}
+          onChange={(memberId) => setForm({ ...form, payerMemberId: memberId })}
           placeholder="誰付款？"
         />
       </div>
@@ -144,20 +160,23 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
       <div>
         <label className="text-sm text-text3 mb-2 block">分攤對象（不選則平均分給所有人）</label>
         <div className="flex flex-wrap gap-2">
-          {members.filter(m => m.profile).map((m) => {
-            const isSelected = form.splitWith.includes(m.user_id)
+          {members.map((m) => {
+            const isSelected = form.splitWith.includes(m.id)
             return (
               <button
                 key={m.id}
                 type="button"
-                onClick={() => toggleSplit(m.user_id)}
+                onClick={() => toggleSplit(m.id)}
                 className={`px-4 py-2 rounded-full text-sm transition-all ${
                   isSelected
                     ? 'bg-accent/10 border-2 border-accent text-accent font-medium'
                     : 'bg-surface2 border-2 border-[var(--border)] text-text2'
                 }`}
               >
-                {m.profile?.full_name || m.profile?.email || '未知用戶'}
+                {getMemberDisplayName(m)}
+                {m.guest_name && (
+                  <span className="ml-1 text-xs opacity-60">訪</span>
+                )}
               </button>
             )
           })}
