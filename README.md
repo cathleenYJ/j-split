@@ -12,6 +12,7 @@
 - 🔐 **Google 登入** - 安全便捷的身份驗證
 - 🧮 **智慧結算** - 自動計算最優化轉帳方案
 - 📱 **手機友善** - 完整的響應式設計
+- 🛡️ **Admin 後台** - 管理員專屬後台，可管理所有使用者、帳本與費用
 
 ## 🚀 技術棧
 
@@ -78,7 +79,11 @@ cp .env.local.example .env.local
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-# (Google OAuth 已在 Supabase 設定)
+
+# Admin 後台（Service Role Key 在 Supabase Dashboard > Project Settings > API 取得）
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ADMIN_EMAIL=your-admin-email@gmail.com
+NEXT_PUBLIC_ADMIN_EMAIL=your-admin-email@gmail.com
 ```
 
 ### 6. 啟動開發伺服器
@@ -185,6 +190,20 @@ exchange_rates    # 匯率
 - ✅ Google OAuth 安全認證
 - ✅ JWT Token 身份驗證
 - ✅ 只有帳本成員可以查看和編輯資料
+- ✅ Admin 後台以 Email 白名單 + Service Role Key 雙重保護
+
+## 🛡️ Admin 後台
+
+前往 `/admin` 可進入管理員後台（需以設定的 `ADMIN_EMAIL` 登入）。
+
+| 頁面 | 功能 |
+|------|------|
+| `/admin` | 總覽統計：使用者數、帳本數、費用筆數、總金額 |
+| `/admin/users` | 查看所有使用者、搜尋、刪除帳號 |
+| `/admin/trips` | 查看所有帳本、成員數、費用數、刪除 |
+| `/admin/expenses` | 查看所有費用、搜尋、刪除 |
+
+> ⚠️ 後台 API 使用 Supabase Service Role Key，可繞過 RLS 存取所有資料，請務必設定 `ADMIN_EMAIL` 並妥善保管 `SUPABASE_SERVICE_ROLE_KEY`。
 
 ## 🤝 貢獻
 
