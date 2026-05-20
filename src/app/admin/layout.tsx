@@ -2,11 +2,9 @@
 
 import { useAuth } from '@/components/AuthProvider'
 import { useRouter, usePathname } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { LayoutDashboard, Users, MapPin, Receipt, LogOut, ChevronRight } from 'lucide-react'
-
-const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL
 
 const navItems = [
   { href: '/admin', label: '總覽', icon: LayoutDashboard, exact: true },
@@ -19,15 +17,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { user, loading, signOut } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (loading) return
-    if (!user || user.email !== ADMIN_EMAIL) {
-      router.replace('/')
-    }
+    if (!user) { router.replace('/'); return }
+
+    fetch('/api/admin/me')
+      .then((r) => r.json())
+      .then(({ isAdmin }) => {
+        if (!isAdmin) router.replace('/')
+        else setIsAdmin(true)
+      })
+      .catch(() => router.replace('/'))
   }, [user, loading, router])
 
-  if (loading || !user || user.email !== ADMIN_EMAIL) {
+  if (loading || isAdmin !== true) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg">
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
@@ -72,11 +77,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-3 mb-3">
             <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
               <span className="text-xs font-bold text-accent">
-                {user.email?.[0]?.toUpperCase()}
+                {user?.email?.[0]?.toUpperCase()}
               </span>
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-medium text-text truncate">{user.email}</p>
+              <p className="text-xs font-medium text-text truncate">{user?.email}</p>
               <p className="text-[10px] text-accent font-semibold">Administrator</p>
             </div>
           </div>
