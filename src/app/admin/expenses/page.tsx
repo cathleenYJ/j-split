@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Trash2, ChevronLeft, ChevronRight, Search, ReceiptX, ExternalLink } from 'lucide-react'
+import { Trash2, ChevronLeft, ChevronRight, Search, FileX, ExternalLink } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhTW } from 'date-fns/locale'
 import Link from 'next/link'
@@ -116,7 +116,7 @@ export default function AdminExpensesPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2 text-text3">
-            <ReceiptX size={28} />
+            <FileX size={28} />
             <p className="text-sm">沒有符合的費用</p>
           </div>
         ) : (
