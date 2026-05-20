@@ -6,8 +6,9 @@ import { useEffect, useState } from 'react'
 import { supabase, Trip } from '@/lib/supabase'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Plus, LogOut, Calendar } from 'lucide-react'
+import { Plus, LogOut, Calendar, Trash2 } from 'lucide-react'
 import { CreateTripModal } from '@/components/CreateTripModal'
+import { useToast } from '@/components/ToastProvider'
 
 export default function DashboardPage() {
   const { user, profile, loading, signOut } = useAuth()
@@ -15,6 +16,9 @@ export default function DashboardPage() {
   const [trips, setTrips] = useState<Trip[]>([])
   const [loadingTrips, setLoadingTrips] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [tripToDelete, setTripToDelete] = useState<Trip | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const { showToast } = useToast()
 
   useEffect(() => {
     if (!loading && !user) {
@@ -37,6 +41,28 @@ export default function DashboardPage() {
       loadTrips()
     }
   }, [user])
+
+  async function handleDeleteTrip() {
+    if (!tripToDelete) return
+    setDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .delete()
+        .eq('id', tripToDelete.id)
+
+      if (error) throw error
+
+      showToast('帳本已刪除', 'success')
+      setTripToDelete(null)
+      loadTrips()
+    } catch (error) {
+      console.error('刪除帳本失敗:', error)
+      showToast('刪除失敗，請稍後再試', 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   async function loadTrips() {
     try {
@@ -133,10 +159,10 @@ export default function DashboardPage() {
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="btn-primary px-6 py-3 rounded-lg flex items-center gap-2"
+            className="btn-primary px-4 sm:px-6 py-3 rounded-lg flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
-            <span>建立帳本</span>
+            <span className="hidden sm:inline">建立帳本</span>
           </button>
         </div>
 
@@ -162,34 +188,85 @@ export default function DashboardPage() {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trips.map((trip) => (
-              <Link key={trip.id} href={`/trip/${trip.id}`}>
-                <div className="card hover:shadow-md transition-shadow cursor-pointer h-full">
-                  {trip.cover_image && (
-                    <div className="w-full h-40 rounded-lg overflow-hidden mb-4 bg-surface2">
-                      <Image
-                        src={trip.cover_image}
-                        alt={trip.title}
-                        width={400}
-                        height={160}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                  <h3 className="font-semibold text-lg mb-2">{trip.title}</h3>
-                  <div className="flex items-center gap-4 text-sm text-text3">
-                    {trip.start_date && (
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        <span>{new Date(trip.start_date).toLocaleDateString('zh-TW')}</span>
+              <div key={trip.id} className="relative group">
+                <Link href={`/trip/${trip.id}`}>
+                  <div className="card hover:shadow-md transition-shadow cursor-pointer h-full">
+                    {trip.cover_image && (
+                      <div className="w-full h-40 rounded-lg overflow-hidden mb-4 bg-surface2">
+                        <Image
+                          src={trip.cover_image}
+                          alt={trip.title}
+                          width={400}
+                          height={160}
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                     )}
+                    <h3 className="font-semibold text-lg mb-2 pr-8">{trip.title}</h3>
+                    <div className="flex items-center gap-4 text-sm text-text3">
+                      {(trip.start_date || trip.end_date) && (
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4 flex-shrink-0" />
+                          <span>
+                            {trip.start_date && new Date(trip.start_date).toLocaleDateString('zh-TW')}
+                            {trip.start_date && trip.end_date && ' - '}
+                            {trip.end_date && new Date(trip.end_date).toLocaleDateString('zh-TW')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Link>
+                </Link>
+                {trip.created_by === user?.id && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); setTripToDelete(trip) }}
+                    className="absolute top-3 right-3 p-1.5 rounded-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-red-500/10 transition-all"
+                    title="刪除帳本"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
       </main>
+
+      {/* Delete Trip Modal */}
+      {tripToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-xl font-semibold">刪除帳本</h3>
+            </div>
+            <p className="text-text2 mb-2">
+              確定要刪除「<span className="font-semibold text-accent">{tripToDelete.title}</span>」嗎？
+            </p>
+            <p className="text-sm text-red-500 mb-6">
+              ⚠️ 此操作將永久刪除所有費用記錄、成員資料和結算資訊，且無法復原。
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setTripToDelete(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border)] hover:bg-surface2 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteTrip}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? '刪除中...' : '確認刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Trip Modal */}
       {showCreateModal && (

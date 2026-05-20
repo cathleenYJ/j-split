@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthProvider'
 import { X } from 'lucide-react'
+import { useToast } from './ToastProvider'
 import { Currency } from '@/lib/split-calc'
 import { CurrencySelector } from './CurrencySelector'
 
@@ -14,6 +15,7 @@ type Props = {
 
 export function CreateTripModal({ onClose, onSuccess }: Props) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     title: '',
@@ -33,6 +35,7 @@ export function CreateTripModal({ onClose, onSuccess }: Props) {
         .from('trips')
         .insert({
           ...form,
+          display_currency: form.base_currency,
           start_date: form.start_date || null,
           end_date: form.end_date || null,
           created_by: user.id,
@@ -56,7 +59,7 @@ export function CreateTripModal({ onClose, onSuccess }: Props) {
       onSuccess()
     } catch (error: any) {
       console.error('建立帳本失敗:', error)
-      alert('建立失敗：' + error.message)
+      showToast('建立失敗：' + error.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -88,6 +91,14 @@ export function CreateTripModal({ onClose, onSuccess }: Props) {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium mb-2">結算幣別</label>
+            <CurrencySelector
+              value={form.base_currency}
+              onChange={(currency) => setForm({ ...form, base_currency: currency })}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">開始日期</label>
@@ -107,14 +118,6 @@ export function CreateTripModal({ onClose, onSuccess }: Props) {
                 className="w-full px-4 py-3 rounded-lg"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2">結算幣別</label>
-            <CurrencySelector
-              value={form.base_currency}
-              onChange={(currency) => setForm({ ...form, base_currency: currency })}
-            />
           </div>
 
           <div className="flex gap-3 pt-4">

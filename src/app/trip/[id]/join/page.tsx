@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/components/ToastProvider'
 import { Users, Check, ArrowRight } from 'lucide-react'
 
 type PageProps = {
@@ -19,6 +20,7 @@ export default function JoinTripPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [alreadyMember, setAlreadyMember] = useState(false)
+  const { showToast } = useToast()
 
   useEffect(() => {
     if (!authLoading) {
@@ -46,7 +48,7 @@ export default function JoinTripPage({ params }: PageProps) {
 
       if (tripError) {
         console.error('Trip not found:', tripError)
-        alert('找不到此帳本')
+        showToast('找不到此帳本', 'error')
         router.push('/dashboard')
         return
       }
@@ -102,7 +104,7 @@ export default function JoinTripPage({ params }: PageProps) {
       router.push(`/trip/${tripId}`)
     } catch (error: any) {
       console.error('Failed to join trip:', error)
-      alert(`加入帳本失敗：${error.message || '請稍後再試'}`)
+      showToast('加入帳本失敗，請稍後再試', 'error')
     } finally {
       setJoining(false)
     }

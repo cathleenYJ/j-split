@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthProvider'
-import { supabase, Trip, Expense, Profile, TripMember, ExchangeRate } from '@/lib/supabase'
+import { supabase, Trip, Expense, ExpenseSplit, Profile, TripMember, ExchangeRate } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeft, Users, Plus, Settings, UserPlus, Trash2, UserMinus, DollarSign, Edit2 } from 'lucide-react'
+import { ArrowLeft, Users, Plus, Settings, UserPlus, Trash2, UserMinus, DollarSign, Edit2, X, User } from 'lucide-react'
 import { ExpenseForm } from '@/components/ExpenseForm'
 import { ExpenseList } from '@/components/ExpenseList'
 import { BalanceView } from '@/components/BalanceView'
@@ -14,6 +14,7 @@ import { InviteModal } from '@/components/InviteModal'
 import { ExchangeRateModal } from '@/components/ExchangeRateModal'
 import { EditTripModal } from '@/components/EditTripModal'
 import { AddGuestModal } from '@/components/AddGuestModal'
+import { useToast } from '@/components/ToastProvider'
 import { buildRateMap, calculateBalances, calculateSettlements, Currency } from '@/lib/split-calc'
 import { getMemberDisplayName } from '@/lib/supabase'
 
@@ -25,10 +26,12 @@ export default function TripDetailPage({ params }: PageProps) {
   const tripId = params.id
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
+  const { showToast } = useToast()
 
   const [trip, setTrip] = useState<Trip | null>(null)
   const [members, setMembers] = useState<(TripMember & { profile: Profile })[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [splits, setSplits] = useState<ExpenseSplit[]>([])
   const [exchangeRates, setExchangeRates] = useState<ExchangeRate[]>([])
   const [loading, setLoading] = useState(true)
   const [isMember, setIsMember] = useState(false)
@@ -41,6 +44,8 @@ export default function TripDetailPage({ params }: PageProps) {
   const [removingMember, setRemovingMember] = useState(false)
   const [showRateModal, setShowRateModal] = useState(false)
   const [displayCurrency, setDisplayCurrency] = useState<Currency | null>(null)
+  const [showMembersPanel, setShowMembersPanel] = useState(false)
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -69,6 +74,9 @@ export default function TripDetailPage({ params }: PageProps) {
       // 初始化顯示幣別（從資料庫讀取，如無則使用基礎幣別）
       if (!displayCurrency) {
         setDisplayCurrency((tripData.display_currency || tripData.base_currency) as Currency)
+      } else {
+        // 帳本設定更新時同步最新的結算幣別
+        setDisplayCurrency((tripData.display_currency || tripData.base_currency) as Currency)
       }
 
       // 2. 檢查是否為成員
@@ -80,7 +88,7 @@ export default function TripDetailPage({ params }: PageProps) {
         .single()
 
       if (!memberCheck) {
-        alert('您不是此帳本的成員')
+        showToast('您不是此帳本的成員', 'info')
         router.push('/dashboard')
         return
       }
@@ -105,7 +113,21 @@ export default function TripDetailPage({ params }: PageProps) {
       if (expensesError) throw expensesError
       setExpenses(expensesData || [])
 
-      // 5. 載入匯率
+      // 5. 載入分攤記錄
+      const expenseIds = (expensesData || []).map((e: Expense) => e.id)
+      if (expenseIds.length > 0) {
+        const { data: splitsData, error: splitsError } = await supabase
+          .from('expense_splits')
+          .select('*')
+          .in('expense_id', expenseIds)
+
+        if (splitsError) throw splitsError
+        setSplits(splitsData || [])
+      } else {
+        setSplits([])
+      }
+
+      // 6. 載入匯率
       const { data: ratesData, error: ratesError } = await supabase
         .from('exchange_rates')
         .select('*')
@@ -154,7 +176,7 @@ export default function TripDetailPage({ params }: PageProps) {
 
   async function handleDeleteTrip() {
     if (!trip || trip.created_by !== user?.id) {
-      alert('只有帳本創建者可以刪除帳本')
+      showToast('只有帳本創建者可以刪除帳本', 'info')
       return
     }
 
@@ -167,11 +189,11 @@ export default function TripDetailPage({ params }: PageProps) {
 
       if (error) throw error
 
-      alert('帳本已刪除')
+      showToast('帳本已刪除', 'success')
       router.push('/dashboard')
     } catch (error) {
       console.error('刪除帳本失敗:', error)
-      alert('刪除失敗，請稍後再試')
+      showToast('刪除失敗，請稍後再試', 'error')
     } finally {
       setDeleting(false)
       setShowDeleteModal(false)
@@ -180,12 +202,12 @@ export default function TripDetailPage({ params }: PageProps) {
 
   async function handleRemoveMember() {
     if (!memberToRemove || !trip || trip.created_by !== user?.id) {
-      alert('只有帳本創建者可以移除成員')
+      showToast('只有帳本創建者可以移除成員', 'info')
       return
     }
 
     if (memberToRemove.user_id === user?.id) {
-      alert('無法移除自己')
+      showToast('無法移除自己', 'info')
       return
     }
 
@@ -228,12 +250,12 @@ export default function TripDetailPage({ params }: PageProps) {
 
       if (memberError) throw memberError
 
-      alert('成員已移除，相關費用記錄已清除')
+      showToast('成員已移除，相關費用記錄已清除', 'success')
       setMemberToRemove(null)
       loadTripData()
     } catch (error) {
       console.error('移除成員失敗:', error)
-      alert('移除失敗，請稍後再試')
+      showToast('移除失敗，請稍後再試', 'error')
     } finally {
       setRemovingMember(false)
     }
@@ -241,18 +263,6 @@ export default function TripDetailPage({ params }: PageProps) {
 
   async function handleDisplayCurrencyChange(currency: Currency) {
     setDisplayCurrency(currency)
-    
-    // 保存到資料庫
-    try {
-      const { error } = await supabase
-        .from('trips')
-        .update({ display_currency: currency })
-        .eq('id', tripId)
-
-      if (error) throw error
-    } catch (error) {
-      console.error('保存顯示幣別失敗:', error)
-    }
   }
 
   if (authLoading || loading) {
@@ -279,9 +289,18 @@ export default function TripDetailPage({ params }: PageProps) {
   const usedCurrencies = Array.from(new Set(expenses.map(e => e.currency as Currency)))
 
   // 使用 trip_members.id 作為統一成員識別鍵（相容登入與訪客成員）
+  // 從實際 expense_splits 記錄取得每筆費用的分擔對象
+  const splitsByExpense = new Map<string, string[]>()
+  for (const s of splits) {
+    if (!s.expense_id || !s.member_id) continue
+    if (!splitsByExpense.has(s.expense_id)) splitsByExpense.set(s.expense_id, [])
+    splitsByExpense.get(s.expense_id)!.push(s.member_id)
+  }
+
   const expensesWithSplits = expenses.map(exp => ({
     ...exp,
-    splitWith: members.map(m => m.id),
+    // 若查無分攤記錄（舊資料）則 fallback 平均所有人
+    splitWith: splitsByExpense.get(exp.id) ?? members.map(m => m.id),
   }))
 
   const { balances, hasError } = calculateBalances(
@@ -307,7 +326,7 @@ export default function TripDetailPage({ params }: PageProps) {
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div className="flex-1 min-w-0">
-              <h1 className="font-serif text-xl font-semibold text-accent">{trip.title}</h1>
+              <h1 className="font-serif text-xl font-semibold text-accent truncate">{trip.title}</h1>
               {(trip.start_date || trip.end_date) && (
                 <p className="text-xs text-text3 mt-1">
                   {trip.start_date && new Date(trip.start_date).toLocaleDateString('zh-TW')}
@@ -316,36 +335,25 @@ export default function TripDetailPage({ params }: PageProps) {
                 </p>
               )}
             </div>
-            {trip.created_by === user?.id && (
-              <button 
-                onClick={() => setShowEditModal(true)}
-                className="p-2 hover:bg-surface2 rounded-lg transition-colors"
-                title="編輯帳本"
-              >
-                <Edit2 className="w-5 h-5 text-accent" />
-              </button>
-            )}
-            <button 
-              onClick={() => setShowRateModal(true)}
+            <button
+              onClick={() => setShowSettingsMenu(true)}
               className="p-2 hover:bg-surface2 rounded-lg transition-colors"
-              title="匯率管理"
+              title="設定"
             >
-              <DollarSign className="w-5 h-5 text-accent" />
+              <Settings className="w-5 h-5 text-text2" />
             </button>
-            {trip.created_by === user?.id && (
-              <button 
-                onClick={() => setShowDeleteModal(true)}
-                className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
-                title="刪除帳本"
-              >
-                <Trash2 className="w-5 h-5 text-red-500" />
-              </button>
-            )}
           </div>
 
           {/* Members Bar */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2">
-            <Users className="w-4 h-4 text-text3 flex-shrink-0" />
+            <button
+              onClick={() => setShowMembersPanel(true)}
+              className="flex items-center gap-1.5 flex-shrink-0 px-2 py-1.5 hover:bg-surface2 rounded-lg transition-colors"
+              title="查看所有成員"
+            >
+              <Users className="w-4 h-4 text-text3" />
+              <span className="text-xs font-medium text-text3">{members.length} 人</span>
+            </button>
             <button
               onClick={() => setShowInviteModal(true)}
               className="flex items-center gap-1.5 bg-accent/10 hover:bg-accent/20 px-3 py-1.5 rounded-full text-sm transition-colors flex-shrink-0"
@@ -362,33 +370,6 @@ export default function TripDetailPage({ params }: PageProps) {
               <UserPlus className="w-4 h-4 text-accent2" />
               <span className="text-accent2 font-medium">訪客</span>
             </button>
-            {members.map(member => (
-              <div key={member.id} className="flex items-center gap-2 bg-surface2 px-3 py-1.5 rounded-full text-sm whitespace-nowrap group">
-                {member.guest_name ? (
-                  <div className="w-5 h-5 rounded-full bg-accent2/20 flex items-center justify-center">
-                    <span className="text-[10px] text-accent2 font-bold">訪</span>
-                  </div>
-                ) : member.profile?.avatar_url ? (
-                  <Image
-                    src={member.profile.avatar_url}
-                    alt={getMemberDisplayName(member)}
-                    width={20}
-                    height={20}
-                    className="rounded-full"
-                  />
-                ) : null}
-                <span>{getMemberDisplayName(member)}</span>
-                {trip.created_by === user?.id && member.user_id !== user?.id && (
-                  <button
-                    onClick={() => setMemberToRemove(member)}
-                    className="ml-1 p-0.5 hover:bg-red-500/20 rounded transition-colors opacity-0 group-hover:opacity-100"
-                    title="移除成員"
-                  >
-                    <UserMinus className="w-3.5 h-3.5 text-red-500" />
-                  </button>
-                )}
-              </div>
-            ))}
           </div>
         </div>
       </header>
@@ -400,7 +381,8 @@ export default function TripDetailPage({ params }: PageProps) {
           <h2 className="text-lg font-semibold mb-4">新增費用</h2>
           <ExpenseForm 
             tripId={tripId} 
-            members={members} 
+            members={members}
+            baseCurrency={displayCurrency || trip.base_currency as Currency}
             onSuccess={loadTripData}
           />
         </div>
@@ -413,10 +395,12 @@ export default function TripDetailPage({ params }: PageProps) {
           </h2>
           <ExpenseList 
             expenses={expenses} 
+            splits={splits}
             members={members}
             baseCurrency={displayCurrency || trip.base_currency as Currency}
             rateMap={rateMap}
             onDelete={loadTripData}
+            onEdit={loadTripData}
           />
         </div>
 
@@ -424,8 +408,8 @@ export default function TripDetailPage({ params }: PageProps) {
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">結算結果</h2>
           {hasError ? (
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-500/20 rounded-full mb-4">
+            <div className="flex flex-col items-center text-center py-8 px-2">
+              <div className="flex items-center justify-center w-16 h-16 bg-orange-500/20 rounded-full mb-4 flex-shrink-0">
                 <DollarSign className="w-8 h-8 text-orange-500" />
               </div>
               <p className="text-text2 mb-2">部分費用幣別缺少匯率設定</p>
@@ -434,7 +418,7 @@ export default function TripDetailPage({ params }: PageProps) {
               </p>
               <button
                 onClick={() => setShowRateModal(true)}
-                className="btn-primary px-6 py-2 rounded-lg inline-flex items-center gap-2"
+                className="btn-primary w-full max-w-xs px-6 py-2 rounded-lg flex items-center justify-center gap-2"
               >
                 <DollarSign className="w-4 h-4" />
                 設定匯率
@@ -447,6 +431,9 @@ export default function TripDetailPage({ params }: PageProps) {
               members={members}
               baseCurrency={displayCurrency || trip.base_currency as Currency}
               hasError={hasError}
+              expenses={expenses}
+              splits={splits}
+              rateMap={rateMap}
             />
           )}
         </div>
@@ -481,7 +468,6 @@ export default function TripDetailPage({ params }: PageProps) {
         tripId={tripId}
         displayCurrency={displayCurrency || trip.base_currency as Currency}
         usedCurrencies={usedCurrencies}
-        onDisplayCurrencyChange={handleDisplayCurrencyChange}
         isOpen={showRateModal}
         onClose={() => setShowRateModal(false)}
         onUpdate={loadTripData}
@@ -520,6 +506,120 @@ export default function TripDetailPage({ params }: PageProps) {
               >
                 {deleting ? '刪除中...' : '確認刪除'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Panel */}
+      {showSettingsMenu && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowSettingsMenu(false)}
+        >
+          <div
+            className="w-full sm:max-w-sm bg-surface rounded-t-2xl sm:rounded-2xl shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+              <h3 className="font-semibold">帳本設定</h3>
+              <button
+                onClick={() => setShowSettingsMenu(false)}
+                className="p-1.5 hover:bg-surface2 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-text3" />
+              </button>
+            </div>
+            <div className="p-3 space-y-1">
+              {trip.created_by === user?.id && (
+                <button
+                  onClick={() => { setShowEditModal(true); setShowSettingsMenu(false) }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface2 transition-colors text-left"
+                >
+                  <div className="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                    <Edit2 className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm">編輯帳本資訊</div>
+                    <div className="text-xs text-text3">修改名稱、結算幣別、日期</div>
+                  </div>
+                </button>
+              )}
+              <button
+                onClick={() => { setShowRateModal(true); setShowSettingsMenu(false) }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface2 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-full bg-accent2/10 flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="w-5 h-5 text-accent2" />
+                </div>
+                <div>
+                  <div className="font-medium text-sm">匯率管理</div>
+                  <div className="text-xs text-text3">設定幣別換算比率</div>
+                </div>
+              </button>
+
+            </div>
+            <div className="h-safe-area-inset-bottom pb-4" />
+          </div>
+        </div>
+      )}
+
+      {/* Members Panel */}
+      {showMembersPanel && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowMembersPanel(false)}
+        >
+          <div
+            className="w-full sm:max-w-sm bg-surface rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[70vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+              <h3 className="font-semibold">旅行成員 ({members.length})</h3>
+              <button
+                onClick={() => setShowMembersPanel(false)}
+                className="p-1.5 hover:bg-surface2 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-text3" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 space-y-1">
+              {members.map(member => (
+                <div key={member.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-surface2 transition-colors">
+                  {member.guest_name ? (
+                    <div className="w-9 h-9 rounded-full bg-accent2/20 flex items-center justify-center flex-shrink-0">
+                      <span className="text-xs text-accent2 font-bold">訪</span>
+                    </div>
+                  ) : member.profile?.avatar_url ? (
+                    <Image
+                      src={member.profile.avatar_url}
+                      alt={getMemberDisplayName(member)}
+                      width={36}
+                      height={36}
+                      className="rounded-full flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                      <User className="w-5 h-5 text-accent" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm">{getMemberDisplayName(member)}</div>
+                    <div className="text-xs text-text3">
+                      {member.guest_name ? '訪客成員' : member.user_id === user?.id ? '（你）' : '已加入'}
+                    </div>
+                  </div>
+                  {trip.created_by === user?.id && member.user_id !== user?.id && (
+                    <button
+                      onClick={() => { setMemberToRemove(member); setShowMembersPanel(false) }}
+                      className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors flex-shrink-0"
+                      title="移除成員"
+                    >
+                      <UserMinus className="w-4 h-4 text-red-500" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>

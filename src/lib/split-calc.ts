@@ -75,14 +75,13 @@ export function convert(amount: number, from: Currency, to: Currency, rateMap: R
 export function formatCurrency(amount: number, currency: Currency): string {
   try {
     return new Intl.NumberFormat('zh-TW', {
-      style: 'currency',
-      currency: currency,
+      style: 'decimal',
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     }).format(Math.abs(amount))
   } catch (error) {
     // 如果貨幣代碼無效，回退到簡單格式
-    return `${currency} ${Math.abs(amount).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    return Math.abs(amount).toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   }
 }
 

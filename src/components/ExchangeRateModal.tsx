@@ -4,23 +4,24 @@ import { useState, useEffect } from 'react'
 import { supabase, ExchangeRate } from '@/lib/supabase'
 import { Currency } from '@/lib/split-calc'
 import { X, Trash2, DollarSign, ArrowLeftRight, Check } from 'lucide-react'
-import { CurrencySelector } from './CurrencySelector'
+import { useToast } from './ToastProvider'
 
 type Props = {
   tripId: string
   displayCurrency: Currency
   usedCurrencies: Currency[]
-  onDisplayCurrencyChange: (currency: Currency) => void
   isOpen: boolean
   onClose: () => void
   onUpdate: () => void
 }
 
-export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onDisplayCurrencyChange, isOpen, onClose, onUpdate }: Props) {
+export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, isOpen, onClose, onUpdate }: Props) {
   const [rates, setRates] = useState<ExchangeRate[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  
+  const [rateToDelete, setRateToDelete] = useState<string | null>(null)
+  const { showToast } = useToast()
+
   // 用於缺失匯率的輸入框
   const [missingRateInputs, setMissingRateInputs] = useState<Record<string, string>>({})
   // 追蹤每個缺失匯率是否被交換方向
@@ -45,7 +46,7 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
       setRates(data || [])
     } catch (error) {
       console.error('載入匯率失敗:', error)
-      alert('載入匯率失敗')
+      showToast('載入匯率失敗', 'error')
     } finally {
       setLoading(false)
     }
@@ -53,12 +54,12 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
 
   async function handleAddRate(fromCurrency: Currency, toCurrency: Currency, rateValue: string) {
     if (!rateValue || parseFloat(rateValue) <= 0) {
-      alert('請輸入有效的匯率')
+      showToast('請輸入有效的匯率', 'info')
       return
     }
 
     if (fromCurrency === toCurrency) {
-      alert('來源和目標貨幣不能相同')
+      showToast('來源和目標貨幣不能相同', 'info')
       return
     }
 
@@ -71,12 +72,7 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
     )
 
     if (existingSameDirection) {
-      const confirmUpdate = confirm(
-        `已存在 ${fromCurrency} → ${toCurrency} 的匯率設定（${Number(existingSameDirection.rate).toFixed(8)}）\n是否要更新為新的匯率（${parseFloat(rateValue).toFixed(8)}）？`
-      )
-      if (!confirmUpdate) return
-
-      // 更新現有匯率
+      // 直接更新現有匯率
       setSaving(true)
       try {
         const { error } = await supabase
@@ -86,14 +82,14 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
 
         if (error) throw error
 
-        // 清除輸入
         const key = `${fromCurrency}-${toCurrency}`
         setMissingRateInputs(prev => ({ ...prev, [key]: '' }))
+        showToast('匯率已更新', 'success')
         loadRates()
         onUpdate()
       } catch (error) {
         console.error('更新匯率失敗:', error)
-        alert('更新匯率失敗')
+        showToast('更新匯率失敗', 'error')
       } finally {
         setSaving(false)
       }
@@ -101,9 +97,7 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
     }
 
     if (existingReverse) {
-      alert(
-        `已存在反向匯率設定：${existingReverse.from_currency} → ${existingReverse.to_currency}\n請刪除現有設定後再新增`
-      )
+      showToast(`已存在反向匯率 ${existingReverse.from_currency} → ${existingReverse.to_currency}，請先刪除再新增`, 'info')
       return
     }
 
@@ -127,28 +121,29 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
       onUpdate()
     } catch (error) {
       console.error('新增匯率失敗:', error)
-      alert('新增匯率失敗')
+      showToast('新增匯率失敗', 'error')
     } finally {
       setSaving(false)
     }
   }
 
-  async function handleDeleteRate(rateId: string) {
-    if (!confirm('確定要刪除此匯率設定嗎？')) return
-
+  async function handleDeleteRate() {
+    if (!rateToDelete) return
     try {
       const { error } = await supabase
         .from('exchange_rates')
         .delete()
-        .eq('id', rateId)
+        .eq('id', rateToDelete)
 
       if (error) throw error
 
+      showToast('匯率已刪除', 'success')
+      setRateToDelete(null)
       loadRates()
       onUpdate()
     } catch (error) {
       console.error('刪除匯率失敗:', error)
-      alert('刪除匯率失敗')
+      showToast('刪除匯率失敗', 'error')
     }
   }
 
@@ -208,15 +203,6 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Display Currency Setting */}
-          <div className="bg-surface2 rounded-lg p-4 mb-6">
-            <h4 className="font-semibold mb-3">結算顯示幣別</h4>
-            <p className="text-sm text-text3 mb-3">選擇用於顯示餘額和轉帳金額的幣別</p>
-            <CurrencySelector
-              value={displayCurrency}
-              onChange={onDisplayCurrencyChange}
-            />
-          </div>
 
           {/* Required Rates Section */}
           {requiredRates.length > 0 ? (
@@ -259,22 +245,24 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
                     >
                       {req.hasRate && req.rate ? (
                         // 已設定的匯率 - 顯示數值和刪除按鈕（不需要交換功能）
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3">
+                            <span className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 mt-0.5">
                               <Check className="w-4 h-4 text-white" />
                             </span>
-                            <div className="font-mono text-sm">
-                              <span className="font-semibold text-accent">{req.rate.from_currency}</span>
-                              <span className="mx-2 text-text3">→</span>
-                              <span className="font-semibold text-accent">{req.rate.to_currency}</span>
-                            </div>
-                            <div className="text-sm text-text2">
-                              1 {req.rate.from_currency} = <span className="font-semibold text-text1">{Number(req.rate.rate).toFixed(8)}</span> {req.rate.to_currency}
+                            <div>
+                              <div className="font-mono text-sm font-semibold">
+                                <span className="text-accent">{req.rate.from_currency}</span>
+                                <span className="mx-1.5 text-text3">→</span>
+                                <span className="text-accent">{req.rate.to_currency}</span>
+                              </div>
+                              <div className="text-xs text-text2 mt-0.5">
+                                1 {req.rate.from_currency} = <span className="font-semibold text-text1">{Number(req.rate.rate).toFixed(8)}</span> {req.rate.to_currency}
+                              </div>
                             </div>
                           </div>
                           <button
-                            onClick={() => handleDeleteRate(req.rate!.id)}
+                            onClick={() => setRateToDelete(req.rate!.id)}
                             className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
                             title="刪除"
                           >
@@ -283,16 +271,36 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
                         </div>
                       ) : (
                         // 缺失的匯率 - 顯示輸入框
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                            !
-                          </span>
-                          <div className="font-mono text-sm font-semibold flex-shrink-0">
-                            <span className="text-accent">{displayFrom}</span>
-                            <span className="mx-2 text-text3">→</span>
-                            <span className="text-accent">{displayTo}</span>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                              !
+                            </span>
+                            <div className="font-mono text-sm font-semibold">
+                              <span className="text-accent">{displayFrom}</span>
+                              <span className="mx-1.5 text-text3">→</span>
+                              <span className="text-accent">{displayTo}</span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSwappedRates(prev => ({ ...prev, [key]: !isSwapped }))
+                                if (inputValue && parseFloat(inputValue) > 0) {
+                                  const reversedRate = (1 / parseFloat(inputValue)).toFixed(8)
+                                  const newInputKey = isSwapped ? key : `${req.to}-${req.from}`
+                                  setMissingRateInputs(prev => ({
+                                    ...prev,
+                                    [inputKey]: '',
+                                    [newInputKey]: reversedRate
+                                  }))
+                                }
+                              }}
+                              className="ml-auto p-1.5 hover:bg-accent/20 rounded transition-colors"
+                              title="交換幣別方向"
+                            >
+                              <ArrowLeftRight className="w-4 h-4 text-accent" />
+                            </button>
                           </div>
-                          <div className="flex-1 flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                             <span className="text-sm text-text3 flex-shrink-0">1 {displayFrom} =</span>
                             <input
                               type="number"
@@ -303,27 +311,6 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
                               className="flex-1 min-w-0 px-3 py-1.5 text-sm bg-surface rounded border border-[var(--border)] focus:ring-2 focus:ring-accent focus:border-transparent"
                             />
                             <span className="text-sm text-text3 flex-shrink-0">{displayTo}</span>
-                            <button
-                              onClick={() => {
-                                // 交換顯示方向
-                                setSwappedRates(prev => ({ ...prev, [key]: !isSwapped }))
-                                
-                                // 如果有輸入值，計算倒數並填入新方向的輸入框
-                                if (inputValue && parseFloat(inputValue) > 0) {
-                                  const reversedRate = (1 / parseFloat(inputValue)).toFixed(8)
-                                  const newInputKey = isSwapped ? key : `${req.to}-${req.from}`
-                                  setMissingRateInputs(prev => ({ 
-                                    ...prev, 
-                                    [inputKey]: '',  // 清除當前輸入
-                                    [newInputKey]: reversedRate  // 填入反向匯率
-                                  }))
-                                }
-                              }}
-                              className="p-1.5 hover:bg-accent/20 rounded transition-colors flex-shrink-0"
-                              title="交換幣別方向"
-                            >
-                              <ArrowLeftRight className="w-4 h-4 text-accent" />
-                            </button>
                             <button
                               onClick={() => handleAddRate(displayFrom, displayTo, inputValue)}
                               disabled={saving || !inputValue || parseFloat(inputValue) <= 0}
@@ -354,20 +341,20 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
                 {extraRates.map(rate => (
                   <div
                     key={rate.id}
-                    className="flex items-center justify-between p-3 bg-surface2 rounded-lg border border-[var(--border)]"
+                    className="flex items-start justify-between p-3 bg-surface2 rounded-lg border border-[var(--border)]"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="font-mono text-sm">
-                        <span className="font-semibold text-text2">{rate.from_currency}</span>
-                        <span className="mx-2 text-text3">→</span>
-                        <span className="font-semibold text-text2">{rate.to_currency}</span>
+                    <div>
+                      <div className="font-mono text-sm font-semibold">
+                        <span className="text-text2">{rate.from_currency}</span>
+                        <span className="mx-1.5 text-text3">→</span>
+                        <span className="text-text2">{rate.to_currency}</span>
                       </div>
-                      <div className="text-sm text-text3">
+                      <div className="text-xs text-text3 mt-0.5">
                         1 {rate.from_currency} = <span className="font-semibold text-text2">{Number(rate.rate).toFixed(8)}</span> {rate.to_currency}
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDeleteRate(rate.id)}
+                      onClick={() => setRateToDelete(rate.id)}
                       className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
                       title="刪除"
                     >
@@ -390,6 +377,35 @@ export function ExchangeRateModal({ tripId, displayCurrency, usedCurrencies, onD
           </button>
         </div>
       </div>
+
+      {/* Delete Rate Confirmation */}
+      {rateToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-surface rounded-lg max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <h3 className="font-semibold">刪除匯率設定</h3>
+            </div>
+            <p className="text-sm text-text2 mb-6">確定要刪除此匯率設定嗎？此操作無法復原。</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRateToDelete(null)}
+                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border)] hover:bg-surface2 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteRate}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                確認刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

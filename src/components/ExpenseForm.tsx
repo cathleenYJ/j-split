@@ -4,26 +4,33 @@ import { useState, useEffect } from 'react'
 import { supabase, TripMember, getMemberDisplayName } from '@/lib/supabase'
 import { useAuth } from './AuthProvider'
 import { Currency } from '@/lib/split-calc'
-import { Plus } from 'lucide-react'
+import { Plus, Users, ChevronDown } from 'lucide-react'
+import { useToast } from './ToastProvider'
 import { CurrencySelector } from './CurrencySelector'
 import { MemberSelector } from './MemberSelector'
+import { CATEGORIES, CategoryKey, getCategoryByKey } from '@/lib/categories'
 
 type Props = {
   tripId: string
   members: (TripMember & { profile: any })[]
+  baseCurrency: Currency
   onSuccess: () => void
 }
 
-export function ExpenseForm({ tripId, members, onSuccess }: Props) {
+export function ExpenseForm({ tripId, members, baseCurrency, onSuccess }: Props) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false)
+  const [showSplitPicker, setShowSplitPicker] = useState(false)
   const [form, setForm] = useState({
     description: '',
     amount: '',
-    currency: 'TWD' as Currency,
+    currency: baseCurrency,
     payerMemberId: '',   // 改用 trip_members.id
     expense_date: new Date().toISOString().split('T')[0],
     splitWith: [] as string[],  // trip_members.id 陣列
+    category: '' as CategoryKey | '',
   })
 
   // 成員載入後預設付款人為當前使用者
@@ -44,12 +51,12 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
     try {
       const amount = parseFloat(form.amount)
       if (isNaN(amount) || amount <= 0) {
-        alert('請輸入有效金額')
+        showToast('請輸入有效金額', 'info')
         return
       }
 
       if (!form.payerMemberId) {
-        alert('請選擇付款人')
+        showToast('請選擇付款人', 'info')
         return
       }
 
@@ -68,6 +75,7 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
           payer_id: payerMember?.user_id || null,
           payer_member_id: form.payerMemberId,
           expense_date: form.expense_date,
+          category: form.category || null,
           created_by: user.id,
         })
         .select()
@@ -97,16 +105,17 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
       setForm(prev => ({
         description: '',
         amount: '',
-        currency: 'TWD',
+        currency: baseCurrency,
         payerMemberId: prev.payerMemberId,
         expense_date: new Date().toISOString().split('T')[0],
         splitWith: [],
+        category: '' as CategoryKey | '',
       }))
 
       onSuccess()
     } catch (error: any) {
       console.error('新增費用失敗:', error)
-      alert('新增失敗：' + error.message)
+      showToast('新增失敗：' + error.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -123,6 +132,64 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Category Picker */}
+      <div>
+        <label className="text-sm text-text3 mb-2 block">費用類別</label>
+        <button
+          type="button"
+          onClick={() => setShowCategoryPicker(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-lg border border-[var(--border2)] bg-surface hover:border-accent transition-colors text-left"
+        >
+          {form.category ? (() => {
+            const cat = getCategoryByKey(form.category)
+            const Icon = cat.icon
+            return (
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cat.color} ${cat.textColor}`}>
+                <Icon className="w-3.5 h-3.5" />
+                {cat.label}
+              </span>
+            )
+          })() : (
+            <span className="text-sm text-text3">未分類</span>
+          )}
+          <ChevronDown className={`w-4 h-4 text-text3 transition-transform flex-shrink-0 ${showCategoryPicker ? 'rotate-180' : ''}`} />
+        </button>
+        {showCategoryPicker && (
+          <div className="mt-2 border border-[var(--border2)] rounded-lg p-3 bg-surface">
+            <div className="flex flex-wrap gap-2">
+              {form.category && (
+                <button
+                  type="button"
+                  onClick={() => { setForm(prev => ({ ...prev, category: '' })); setShowCategoryPicker(false) }}
+                  className="self-center text-xs text-text3 hover:underline px-1"
+                >
+                  清除
+                </button>
+              )}
+              {CATEGORIES.map(cat => {
+                const Icon = cat.icon
+                const isSelected = form.category === cat.key
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => { setForm(prev => ({ ...prev, category: isSelected ? '' : cat.key })); setShowCategoryPicker(false) }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-all border-2 ${
+                      isSelected
+                        ? `${cat.color} ${cat.textColor} border-current font-medium`
+                        : 'bg-surface2 text-text3 border-[var(--border)]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {cat.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div>
         <input
           type="text"
@@ -134,7 +201,7 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <input
           type="number"
           required
@@ -158,29 +225,82 @@ export function ExpenseForm({ tripId, members, onSuccess }: Props) {
       </div>
 
       <div>
-        <label className="text-sm text-text3 mb-2 block">分攤對象（不選則平均分給所有人）</label>
-        <div className="flex flex-wrap gap-2">
-          {members.map((m) => {
-            const isSelected = form.splitWith.includes(m.id)
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => toggleSplit(m.id)}
-                className={`px-4 py-2 rounded-full text-sm transition-all ${
-                  isSelected
-                    ? 'bg-accent/10 border-2 border-accent text-accent font-medium'
-                    : 'bg-surface2 border-2 border-[var(--border)] text-text2'
-                }`}
-              >
-                {getMemberDisplayName(m)}
-                {m.guest_name && (
-                  <span className="ml-1 text-xs opacity-60">訪</span>
+        <input
+          type="date"
+          value={form.expense_date}
+          onChange={(e) => setForm({ ...form, expense_date: e.target.value })}
+          className="w-full px-4 py-3 rounded-lg"
+        />
+      </div>
+
+      <div>
+        <label className="text-sm text-text3 mb-2 block">分擔對象</label>
+        <button
+          type="button"
+          onClick={() => setShowSplitPicker(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-lg border border-[var(--border2)] bg-surface hover:border-accent transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-text3 flex-shrink-0" />
+            <span className="text-sm text-text2">
+              {form.splitWith.length === 0
+                ? `全員分擔（${members.length} 人）`
+                : `已選 ${form.splitWith.length}\u00a0/\u00a0${members.length} 人`}
+            </span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-text3 transition-transform ${showSplitPicker ? 'rotate-180' : ''}`} />
+        </button>
+        {showSplitPicker && (
+          <div className="mt-2 border border-[var(--border2)] rounded-lg p-3 bg-surface space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-text3">
+                {form.splitWith.length === 0
+                  ? `未選（預設全 ${members.length} 人）`
+                  : `已選 ${form.splitWith.length} / ${members.length} 人`}
+              </span>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, splitWith: members.map(m => m.id) }))}
+                  className="text-xs text-accent hover:underline"
+                >
+                  全選
+                </button>
+                {form.splitWith.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, splitWith: [] }))}
+                    className="text-xs text-text3 hover:underline"
+                  >
+                    清除
+                  </button>
                 )}
-              </button>
-            )
-          })}
-        </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+              {members.map((m) => {
+                const isSelected = form.splitWith.includes(m.id)
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggleSplit(m.id)}
+                    className={`px-3 py-1.5 rounded-full text-sm transition-all ${
+                      isSelected
+                        ? 'bg-accent/10 border-2 border-accent text-accent font-medium'
+                        : 'bg-surface2 border-2 border-[var(--border)] text-text2'
+                    }`}
+                  >
+                    {getMemberDisplayName(m)}
+                    {m.guest_name && (
+                      <span className="ml-1 text-xs opacity-60">訪</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <button

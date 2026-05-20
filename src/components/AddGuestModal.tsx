@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { X, UserPlus } from 'lucide-react'
+import { useToast } from './ToastProvider'
 
 type Props = {
   tripId: string
@@ -14,6 +15,7 @@ type Props = {
 export function AddGuestModal({ tripId, isOpen, onClose, onSuccess }: Props) {
   const [guestName, setGuestName] = useState('')
   const [loading, setLoading] = useState(false)
+  const { showToast } = useToast()
 
   if (!isOpen) return null
 
@@ -21,7 +23,7 @@ export function AddGuestModal({ tripId, isOpen, onClose, onSuccess }: Props) {
     e.preventDefault()
     const name = guestName.trim()
     if (!name) {
-      alert('請輸入訪客名稱')
+      showToast('請輸入訪客名稱', 'info')
       return
     }
 
@@ -38,7 +40,7 @@ export function AddGuestModal({ tripId, isOpen, onClose, onSuccess }: Props) {
 
       if (error) {
         if (error.code === '23505') {
-          alert(`「${name}」已在此帳本中`)
+          showToast(`「${name}」已在此帳本中`, 'info')
         } else {
           throw error
         }
@@ -50,7 +52,7 @@ export function AddGuestModal({ tripId, isOpen, onClose, onSuccess }: Props) {
       onClose()
     } catch (error: any) {
       console.error('新增訪客失敗:', error)
-      alert('新增失敗：' + error.message)
+      showToast('新增失敗：' + error.message, 'error')
     } finally {
       setLoading(false)
     }

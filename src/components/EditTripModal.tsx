@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import { supabase, Trip } from '@/lib/supabase'
 import { X } from 'lucide-react'
+import { useToast } from './ToastProvider'
+import { Currency } from '@/lib/split-calc'
+import { CurrencySelector } from './CurrencySelector'
 
 type Props = {
   trip: Trip
@@ -12,11 +15,13 @@ type Props = {
 }
 
 export function EditTripModal({ trip, isOpen, onClose, onSuccess }: Props) {
+  const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     title: trip.title,
     start_date: trip.start_date || '',
     end_date: trip.end_date || '',
+    display_currency: (trip.display_currency || trip.base_currency || 'TWD') as Currency,
   })
 
   useEffect(() => {
@@ -25,6 +30,7 @@ export function EditTripModal({ trip, isOpen, onClose, onSuccess }: Props) {
         title: trip.title,
         start_date: trip.start_date || '',
         end_date: trip.end_date || '',
+        display_currency: (trip.display_currency || trip.base_currency || 'TWD') as Currency,
       })
     }
   }, [isOpen, trip])
@@ -40,6 +46,7 @@ export function EditTripModal({ trip, isOpen, onClose, onSuccess }: Props) {
           title: form.title,
           start_date: form.start_date || null,
           end_date: form.end_date || null,
+          display_currency: form.display_currency,
         })
         .eq('id', trip.id)
 
@@ -49,7 +56,7 @@ export function EditTripModal({ trip, isOpen, onClose, onSuccess }: Props) {
       onClose()
     } catch (error: any) {
       console.error('更新帳本失敗:', error)
-      alert('更新失敗：' + error.message)
+      showToast('更新失敗：' + error.message, 'error')
     } finally {
       setLoading(false)
     }
@@ -80,6 +87,14 @@ export function EditTripModal({ trip, isOpen, onClose, onSuccess }: Props) {
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="例：2025 濟州島之旅"
               className="w-full px-4 py-3 rounded-lg"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">結算幣別</label>
+            <CurrencySelector
+              value={form.display_currency}
+              onChange={(currency) => setForm({ ...form, display_currency: currency })}
             />
           </div>
 

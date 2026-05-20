@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { TripMember, getMemberDisplayName } from '@/lib/supabase'
+import { TripMember, getMemberDisplayName, Expense, ExpenseSplit } from '@/lib/supabase'
 import { Currency, formatCurrency, Balance, Settlement } from '@/lib/split-calc'
 import Image from 'next/image'
 import { ArrowRight, User } from 'lucide-react'
+import { CategoryChart } from './CategoryChart'
 
 type Props = {
   balances: Balance
@@ -12,10 +13,13 @@ type Props = {
   members: (TripMember & { profile: any })[]
   baseCurrency: Currency
   hasError: boolean
+  expenses: Expense[]
+  splits: ExpenseSplit[]
+  rateMap: Record<Currency, Record<Currency, number | null>>
 }
 
-export function BalanceView({ balances, settlements, members, baseCurrency, hasError }: Props) {
-  const [tab, setTab] = useState<'balance' | 'settlement'>('balance')
+export function BalanceView({ balances, settlements, members, baseCurrency, hasError, expenses, splits, rateMap }: Props) {
+  const [tab, setTab] = useState<'balance' | 'settlement' | 'category'>('balance')
 
   // 改用 trip_members.id 查找（相容登入與訪客成員）
   function getMemberById(id: string) {
@@ -68,7 +72,7 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
       <div className="flex border-b border-[var(--border)] mb-6">
         <button
           onClick={() => setTab('balance')}
-          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+          className={`flex-1 text-center px-2 py-3 text-xs sm:text-sm font-medium transition-colors relative ${
             tab === 'balance' ? 'text-accent' : 'text-text3 hover:text-text2'
           }`}
         >
@@ -79,12 +83,23 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
         </button>
         <button
           onClick={() => setTab('settlement')}
-          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+          className={`flex-1 text-center px-2 py-3 text-xs sm:text-sm font-medium transition-colors relative ${
             tab === 'settlement' ? 'text-accent' : 'text-text3 hover:text-text2'
           }`}
         >
           轉帳方案
           {tab === 'settlement' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"></div>
+          )}
+        </button>
+        <button
+          onClick={() => setTab('category')}
+          className={`flex-1 text-center px-2 py-3 text-xs sm:text-sm font-medium transition-colors relative ${
+            tab === 'category' ? 'text-accent' : 'text-text3 hover:text-text2'
+          }`}
+        >
+          分類統計
+          {tab === 'category' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent"></div>
           )}
         </button>
@@ -125,6 +140,11 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
         </div>
       )}
 
+      {/* Category Chart */}
+      {tab === 'category' && (
+        <CategoryChart expenses={expenses} splits={splits} members={members} baseCurrency={baseCurrency} rateMap={rateMap} />
+      )}
+
       {/* Settlement View */}
       {tab === 'settlement' && (
         <div>
@@ -140,27 +160,21 @@ export function BalanceView({ balances, settlements, members, baseCurrency, hasE
 
                 return (
                   <div key={idx} className="flex items-center gap-3 py-3 px-4 bg-surface2 rounded-lg">
-                    {/* From */}
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {from && <MemberAvatar member={from} />}
-                      <span className="font-medium text-sm truncate">
-                        {from ? getMemberDisplayName(from) : '未知'}
-                      </span>
-                    </div>
-
-                    {/* Arrow */}
-                    <div className="flex items-center gap-2 text-text3 flex-shrink-0">
-                      <div className="h-px w-5 bg-[var(--border2)]"></div>
-                      <ArrowRight className="w-4 h-4" />
-                      <div className="h-px w-5 bg-[var(--border2)]"></div>
-                    </div>
-
-                    {/* To */}
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {to && <MemberAvatar member={to} />}
-                      <span className="font-medium text-sm truncate">
-                        {to ? getMemberDisplayName(to) : '未知'}
-                      </span>
+                    {/* From → Arrow → To (wraps on small screens) */}
+                    <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <div className="flex items-center gap-1.5">
+                        {from && <MemberAvatar member={from} />}
+                        <span className="font-medium text-sm">
+                          {from ? getMemberDisplayName(from) : '未知'}
+                        </span>
+                      </div>
+                      <ArrowRight className="w-4 h-4 text-text3 flex-shrink-0" />
+                      <div className="flex items-center gap-1.5">
+                        {to && <MemberAvatar member={to} />}
+                        <span className="font-medium text-sm">
+                          {to ? getMemberDisplayName(to) : '未知'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Amount */}

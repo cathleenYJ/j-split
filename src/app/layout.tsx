@@ -1,6 +1,7 @@
 import { DM_Sans, Noto_Serif_TC } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/components/AuthProvider'
+import { ToastProvider } from '@/components/ToastProvider'
 
 const dmSans = DM_Sans({ 
   subsets: ['latin'],
@@ -28,7 +29,9 @@ export default function RootLayout({
     <html lang="zh-TW" className={`${dmSans.variable} ${notoSerif.variable}`}>
       <body className="font-sans">
         <AuthProvider>
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

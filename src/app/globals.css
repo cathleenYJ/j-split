@@ -78,12 +78,11 @@ input:not([type="checkbox"]), select, textarea {
 }
 
 /* Toast 通知 */
-.toast {
-  @apply fixed bottom-6 left-1/2 -translate-x-1/2 bg-text text-bg text-sm px-6 py-3 rounded-full shadow-lg z-50;
-  animation: slideUp 0.3s ease;
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translate(-50%, 20px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+.animate-toast {
+  animation: toastIn 0.2s ease forwards;
 }

@@ -2,9 +2,11 @@
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthProvider'
+import { useToast } from './ToastProvider'
 
 export function LoginButton() {
   const { user, loading } = useAuth()
+  const { showToast } = useToast()
 
   const handleGoogleLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -20,7 +22,7 @@ export function LoginButton() {
 
     if (error) {
       console.error('登入失敗:', error.message)
-      alert('登入失敗，請稍後再試')
+      showToast('登入失敗，請稍後再試', 'error')
     }
   }
 
